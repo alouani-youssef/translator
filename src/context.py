@@ -1,10 +1,12 @@
 import re
 import json
 import hashlib
-import ollama
+from ollama import Client
 from typing import Dict, Any, List, Optional
 from src.config import Config
-llm_summary_client = ollama.Client(host=Config.SUMMARIZE_LLM_URL)
+print(f"Lunching Summary Client On : {Config.SUMMARIZE_LLM_URL}. The Model Is Used For Content Management")
+llm_summary_client = Client(host=Config.SUMMARIZE_LLM_URL)
+
 def infer_content_type(filename: str, path: str = "") -> str:
     name = filename.lower()
     if "product" in name:
