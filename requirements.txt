@@ -8,3 +8,4 @@ pandas
 chroma
 python-dotenv
 ollama
+re

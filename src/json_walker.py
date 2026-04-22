@@ -54,9 +54,7 @@ def is_translatable(text: str) -> bool:
     return True
 
 
-# ------------------------------------------------------------------
-# Walker
-# ------------------------------------------------------------------
+
 
 def walk(data) -> any:
 
@@ -74,3 +72,7 @@ def walk(data) -> any:
 
     else:
         return data
+
+def translateContent(fileName: str, data: dict | list) -> any:
+    context = getContext(fileName)
+    return walk(data, context)
