@@ -7,7 +7,6 @@ class Config:
     TRANSLATION_LLM_URL: str = os.getenv("TRANSLATION_LLM_URL", "http://localhost:11434")
     TRANSLATION_LLM: str = os.getenv("TRANSLATION_LLM", "llama3")
 
-
     SUMMARIZE_LLM_URL: str = os.getenv("SUMMARIZE_LLM_URL", "http://localhost:11434")
     SUMMARIZE_LLM: str = os.getenv("SUMMARIZE_LLM", "llama3")
 

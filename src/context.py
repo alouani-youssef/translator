@@ -4,8 +4,7 @@ import hashlib
 import ollama
 from typing import Dict, Any, List, Optional
 from src.config import Config
-ollama.host = Config.SUMMARIZE_LLM_URL
-
+llm_summary_client = ollama.Client(host=Config.SUMMARIZE_LLM_URL)
 def infer_content_type(filename: str, path: str = "") -> str:
     name = filename.lower()
     if "product" in name:
@@ -92,16 +91,12 @@ def extract_json(raw: str) -> str:
 def build_summary_prompt(filename: str, content: str) -> str:
     return f"""
     You are an expert content strategist.
-
-    Summarize the following file in 1-2 concise sentences.
-
+    Summarize the following file, in a single pharagraph, because it will be used as a context for translation:
     File name: {filename}
-
-    Content (first 2000 chars):
+    Content:
     \"\"\"
-    {content[:2000]}
+    {content}
     \"\"\"
-
     Rules:
     - Plain text only
     - No JSON
@@ -113,7 +108,7 @@ def build_summary_prompt(filename: str, content: str) -> str:
 def generate_summary(filename: str, content: str) -> str:
     try:
         prompt = build_summary_prompt(filename, content)
-        response = ollama.chat(
+        response = llm_summary_client.chat(
             model=Config.SUMMARIZE_LLM,
             messages=[{"role": "user", "content": prompt}],
             options={"temperature": 0.2},
@@ -169,7 +164,7 @@ def enrich_context_with_llm(
     try:
         prompt = build_context_prompt(filename, content, base_context)
 
-        response = ollama.chat(
+        response = llm_summary_client.chat(
             model=Config.SUMMARIZE_LLM,
             messages=[{"role": "user", "content": prompt}],
             options={"temperature": 0.2},

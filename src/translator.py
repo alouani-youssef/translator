@@ -1,10 +1,9 @@
 import json
 import re
-import ollama
+from ollama import Client
 from typing import List, Dict, Any, Optional
 from src.config import Config
-ollama.host = Config.TRANSLATION_LLM_URL
-
+llm_translate_client = Client(host=Config.TRANSLATION_LLM_URL)
 def extract_json(raw: str) -> str:
     raw = re.sub(r"```(?:json)?\s*", "", raw)
     raw = re.sub(r"```", "", raw)
@@ -64,18 +63,15 @@ Entities to preserve:
 """
 
 
-# =========================================================
-# LLM CALL
-# =========================================================
-
 def ollama_chat(prompt: str, temperature: float = 0.3) -> str:
-    response = ollama.chat(
+    print(f"Prompt: {prompt}")
+    response = llm_translate_client.chat(
         model=Config.TRANSLATION_LLM,
         messages=[{"role": "user", "content": prompt}],
         options={"temperature": temperature},
     )
+    print(f"Response: {response}")
     return response["message"]["content"].strip()
-
 
 
 
