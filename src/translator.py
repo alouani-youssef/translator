@@ -1,196 +1,145 @@
 import json
 import re
 import ollama
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from src.config import Config
+ollama.host = Config.TRANSLATION_LLM_URL
+
+def extract_json(raw: str) -> str:
+    raw = re.sub(r"```(?:json)?\s*", "", raw)
+    raw = re.sub(r"```", "", raw)
+    raw = raw.strip()
+
+    for start_char, end_char in [('{', '}'), ('[', ']')]:
+        start = raw.find(start_char)
+        if start == -1:
+            continue
+
+        end = raw.rfind(end_char)
+        if end != -1 and end > start:
+            candidate = raw[start:end + 1]
+            try:
+                json.loads(candidate)
+                return candidate
+            except json.JSONDecodeError:
+                pass
+
+    return raw
 
 
-def build_translation_prompt(text: str, context: Dict[str, Any]) -> str:
-    return f"""
-You are a content writter specialized in marketing and SEO for Saas B2B.
+# =========================================================
+# PROMPT (BATCH)
+# =========================================================
+
+def build_batch_prompt(texts: List[str], context: Dict[str, Any]) -> str:
+    return f"""You are a professional translator specialized in SaaS marketing.
+
 Target language: {Config.TARGET_LANGUAGE}
+Source language: {Config.SOURCE_LANGUAGE}
 
-Context:
-- Industry: "Restaurant Management Software"
-- Tone: "professional, friendly, and persuasive"
-- Audience: "restaurant owners and managers"
-- Keywords to preserve: {context.get("keywords", [])}
-- Glossary (strict mapping): {context.get("glossary", {})}
+=== CONTEXT ===
+Summary: {context.get("summary", "")}
+Industry: {context.get("industry", "")}
+Tone: {context.get("tone", "")}
+Audience: {context.get("audience", "")}
+Content type: {context.get("content_type", "")}
+Intent: {context.get("intent", "")}
 
-Instructions:
+Glossary:
+{json.dumps(context.get("glossary", {}), ensure_ascii=False)}
+
+Entities to preserve:
+{context.get("entities", [])}
+
+=== RULES ===
 - Preserve meaning, tone, and SEO intent
-- Adapt naturally (not literal translation)
-- Respect glossary strictly if provided
-- Keep important keywords
-- Keep Stracture of the output exactly as the input
+- Keep placeholders like {{name}}, %s, :var unchanged
+- Respect glossary strictly
+- Keep brand/entity names unchanged
+- Return ONLY JSON array of translated strings
+- Same order as input
 
-Return ONLY the translated text.
-
-Text:
-{text}
+=== TEXTS ===
+{json.dumps(texts, ensure_ascii=False, indent=2)}
 """
 
 
-def build_scoring_prompt(text: str, candidates: List[str]) -> str:
-    return f"""
-You are a translation quality evaluator.
+# =========================================================
+# LLM CALL
+# =========================================================
 
-Original text:
-{text}
-
-Target language: {Config.TARGET_LANGUAGE}
-
-Evaluate each translation based on:
-- Accuracy
-- Fluency
-- SEO quality
-- Context alignment
-
-Return STRICT JSON:
-[
-  {{"translation": "...", "score": 0-10}}
-]
-
-Translations:
-{json.dumps(candidates, ensure_ascii=False, indent=2)}
-"""
-
-
-def build_validation_prompt(original: str, translation: str, context: Dict[str, Any]) -> str:
-    return f"""
-You are a strict QA reviewer.
-
-Original:
-{original}
-
-Translation:
-{translation}
-
-Context:
-{json.dumps(context, ensure_ascii=False)}
-
-Check:
-- Meaning preserved?
-- No hallucinations?
-- SEO keywords respected?
-- Fits context?
-
-Return ONLY:
-PASS
-or
-FAIL: <short reason>
-"""
-
-
-def ollama_chat(prompt: str, temperature: float = 0.5) -> str:
+def ollama_chat(prompt: str, temperature: float = 0.3) -> str:
     response = ollama.chat(
-        model=Config.LLM_MODEL,
+        model=Config.TRANSLATION_LLM,
         messages=[{"role": "user", "content": prompt}],
         options={"temperature": temperature},
     )
     return response["message"]["content"].strip()
 
 
-def generate_candidates(text: str, context: Dict[str, Any], n: int = 3) -> List[str]:
-    candidates = []
-
-    for _ in range(n):
-        try:
-            prompt = build_translation_prompt(text, context)
-            result = ollama_chat(prompt, temperature=0.7)
-            if result:
-                candidates.append(result)
-        except Exception as e:
-            print(f"⚠️ Candidate generation error: {e}")
-
-    return list(set(candidates))  # deduplicate
 
 
-def score_candidates(text: str, candidates: List[str]) -> List[Dict[str, Any]]:
-    if not candidates:
+def translate_batch(
+    texts: List[str],
+    context: Dict[str, Any],
+    redis_client=None
+) -> List[str]:
+
+    if not texts:
         return []
+    if not context or not context.get("summary"):
+        raise ValueError("❌ Context is required and must be precomputed (summary missing)")
 
-    try:
-        print(text)
-        print(candidates)
-        prompt = build_scoring_prompt(text, candidates)
-        raw = ollama_chat(prompt, temperature=0.2)
-        print("raw", raw)
-        cleaned_raw = clean_json_response(raw)
-        print("cleaned_raw", cleaned_raw)
-        parsed = json.loads(cleaned_raw)
-        print("parsed", parsed)
-        if isinstance(parsed, list):
-            return parsed
-    except Exception as e:
-        print(f"⚠️ Scoring failed: {e}")
+    results: List[Optional[str]] = [None] * len(texts)
+    missing_texts: List[str] = []
+    missing_indexes: List[int] = []
 
-    return [{"translation": c, "score": 5} for c in candidates]
+    for i, text in enumerate(texts):
+        cache_key = f"tr:{hash(text)}"
 
+        cached = redis_client.get(cache_key) if redis_client else None
 
+        if cached:
+            results[i] = cached
+        else:
+            missing_texts.append(text)
+            missing_indexes.append(i)
 
+    if missing_texts:
+        try:
+            prompt = build_batch_prompt(missing_texts, context)
 
-def clean_json_response(raw: str) -> str:
-    # Remove ```json ... ``` or ``` blocks
-    raw = re.sub(r"```json\s*", "", raw)
-    raw = re.sub(r"```", "", raw)
+            raw = ollama_chat(prompt)
+            cleaned = extract_json(raw)
+            parsed = json.loads(cleaned)
 
-    # Trim spaces
-    raw = raw.strip()
+            if not isinstance(parsed, list):
+                raise ValueError("Invalid LLM response format")
 
-    return raw
+            for idx, translated in zip(missing_indexes, parsed):
+                results[idx] = translated
+                if redis_client:
+                    redis_client.set(
+                        f"tr:{hash(texts[idx])}",
+                        translated,
+                        expire=86400
+                    )
 
-def select_best(scored: List[Dict[str, Any]]) -> str:
-    if not scored:
-        return ""
+        except Exception as e:
+            print(f"⚠️ Batch translation failed: {e}")
 
-    scored_sorted = sorted(scored, key=lambda x: x.get("score", 0), reverse=True)
-    return scored_sorted[0]["translation"]
+            # fallback: return original texts for failed ones
+            for idx in missing_indexes:
+                results[idx] = texts[idx]
 
-
-def validate_translation(original: str, translation: str, context: Dict[str, Any]) -> bool:
-    try:
-        prompt = build_validation_prompt(original, translation, context)
-        result = ollama_chat(prompt, temperature=0)
-
-        return result.startswith("PASS")
-
-    except Exception as e:
-        print(f"⚠️ Validation error: {e}")
-        return True  # fail-open
+    return [r if r is not None else texts[i] for i, r in enumerate(results)]
 
 
 
-def translate(text: str, context: Dict[str, Any] = None) -> str:
-    if not text or not text.strip():
-        return text
-    context = context or {}
-
-    try:
-        candidates = generate_candidates(text, context, n=3)
-
-        if not candidates:
-            return text
-
-        scored = score_candidates(text, candidates)
-
-        best = select_best(scored)
-
-        if not best:
-            return candidates[0]
-
-        is_valid = validate_translation(text, best, context)
-
-        if not is_valid:
-            print("⚠️ QA failed, fallback used")
-            return candidates[0]
-
-        return best
-
-    except ollama.ResponseError as e:
-        print(f"❌ Ollama error: {e}")
-        return text
-
-    except Exception as e:
-        print(f"❌ Unexpected error: {e}")
-        return text
+def translate(
+    text: str,
+    context: Dict[str, Any],
+    redis_client=None
+) -> str:
+    result = translate_batch([text], context, redis_client)
+    return result[0] if result else text

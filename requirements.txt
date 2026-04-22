@@ -7,5 +7,6 @@ langchain-ollama
 pandas
 chroma
 python-dotenv
+redis
 ollama
 re
