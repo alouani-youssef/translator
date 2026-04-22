@@ -49,6 +49,14 @@ Examples:
         default=Config.LLM_URL,
         help=f"Ollama base URL (default: {Config.LLM_URL})",
     )
+    
+    parser.add_argument(
+        "--workers",
+        "-w",
+        type=int,
+        default=Config.MAX_WORKERS,
+        help=f"Number of parallel workers (default: {Config.MAX_WORKERS})",
+    )
 
     args = parser.parse_args()
     Config.INPUT_FOLDER = args.input
@@ -56,6 +64,7 @@ Examples:
     Config.LLM_MODEL = args.model
     Config.TARGET_LANGUAGE = args.lang
     Config.OLLAMA_BASE_URL = args.url
+    Config.MAX_WORKERS = args.workers
 
     input_path = Path(Config.INPUT_FOLDER)
     if not input_path.exists():

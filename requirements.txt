@@ -7,3 +7,4 @@ langchain-ollama
 pandas
 chroma
 python-dotenv
+ollama
