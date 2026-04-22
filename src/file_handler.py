@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.config import Config
@@ -72,7 +73,8 @@ def translate_folder() -> int:
     print(f"🌐 Target language: {Config.TARGET_LANGUAGE}")
     print(f"🤖 Model: {Config.LLM_MODEL}")
     print(f"🧵 Parallel Workers: {Config.MAX_WORKERS}")
-    print()
+    start_time = datetime.now()
+    print(f"Translation Statrs At: {start_time}")
 
     json_files = scan_input_folder()
     if not json_files:
@@ -98,4 +100,7 @@ def translate_folder() -> int:
                 print(f"  ❌ File {json_file.name} generated an exception: {e}")
 
     print(f"\n🎉 Done! Successfully translated {success_count}/{len(json_files)} file(s)")
+    end_time = datetime.now()
+    print(f"Translation Finished At: {end_time}")
+    print(f"Translation Time: {end_time - start_time}")
     return success_count
