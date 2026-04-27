@@ -158,6 +158,88 @@ Rules:
 """
 
 
+def generate_global_context(files: List[Dict[str, Any]]) -> str:
+    """
+    Generate a global context across multiple files for SEO / translation pipeline.
+    
+    Each file should contain:
+    {
+        "filename": str,
+        "content": str,
+        "path": Optional[str]
+    }
+    """
+
+    try:
+        # 🔹 Build compressed input for LLM
+        compact_files = []
+
+        for f in files:
+            filename = f.get("filename", "unknown")
+            content = f.get("content", "")[:2000]  # prevent token explosion
+            path = f.get("path", "")
+
+            content_type = infer_content_type(filename, path)
+
+            compact_files.append({
+                "filename": filename,
+                "content_type": content_type,
+                "content": content
+            })
+
+        prompt = f"""
+You are an expert global SEO and content strategist.
+
+You are analyzing a full application containing multiple content files.
+
+Your task is to generate a SINGLE unified global context that represents the entire system.
+
+Files:
+{json.dumps(compact_files, ensure_ascii=False, indent=2)}
+
+Return ONLY a raw JSON object with this structure:
+
+{{
+  "industry": "string describing the overall industry",
+  "tone": "global tone of all content",
+  "audience": "primary target audience",
+  "keywords": ["most important global keywords"],
+  "entities": ["brands", "products", "services mentioned across files"],
+  "glossary": {{
+    "source_term": "standardized_term"
+  }},
+  "summary": "1 paragraph describing the entire system"
+}}
+
+Rules:
+- Be consistent across files
+- Merge repeated concepts
+- Avoid duplication
+- No explanations
+- Output ONLY valid JSON
+"""
+
+        response = llm_summary_client.chat(
+            model=Config.SUMMARIZE_LLM,
+            messages=[{"role": "user", "content": prompt}],
+            options={"temperature": 0.2},
+        )
+
+        raw = response["message"]["content"]
+        cleaned = extract_json(raw)
+        parsed = json.loads(cleaned)
+
+        if isinstance(parsed, dict):
+            return parsed
+
+    except Exception as e:
+        print(f"⚠️ Global context generation failed: {e}")
+
+    # fallback
+    return "Restaurant management software helps restaurant owners and managers streamline daily operations such as orders, staff coordination, inventory, and performance tracking. It improves efficiency, reduces errors, and provides data-driven insights to support better decision-making. By optimizing workflows and enhancing service speed and accuracy, it also improves customer satisfaction. Overall, it acts as a strategic tool that helps restaurants operate more smoothly, grow sustainably, and deliver better dining experiences."
+
+
+
 def enrich_context_with_llm(
     filename: str,
     content: str,
