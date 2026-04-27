@@ -149,6 +149,8 @@ def translate_file_content(filename: str, data: Any, state=None) -> Any:
                 "is_successed": res.get("is_successed", False),
                 "score": None,
                 "is_approved": res.get("is_approved", False),
+                "is_verified": False,
+                "verified_at": None,
                 "notes": None,
                 "translation_time": res.get("duration"),
                 "input_size": res.get("input_size"),

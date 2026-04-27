@@ -107,7 +107,7 @@ def build_batch_prompt(
         rule_size = f"Strict size constraints (max {size_margin_pct:.0%} diff):\n" + "\n".join(size_rules)
 
     parts += [
-        f"Tone: {context.get('tone', '')} | Audience: {context.get('audience', '')}",
+        f"Tone: {context.get('tone', '')} | Audience: {context.get('audience', '')} Be (More flowing, emphasizes the lack of integration)",
         f"Glossary: {glossary}" if context.get("glossary") else "",
         f"Preserve entities: {entities}" if entities else "",
         f"Rules: Keep placeholders ({{{{name}}}}, %s, :var) and brand names unchanged. {rule_size} Return ONLY a JSON array of translated strings, same order as input.",
@@ -132,7 +132,7 @@ def build_validation_prompt(
         - Check for meaning preservation.
         - Check for structural integrity (placeholders, variables).
         - Check for natural phrasing in the target language.
-        
+        - Be (More flowing, emphasizes the lack of integration) we are not looking for a literal translation but a translation that maintains the same meaning and structure.
         Return ONLY a JSON object with:
         {{
           "is_valid": true/false,

@@ -7,6 +7,10 @@ from src.config import Config
 from src import prompts
 from src.detection import LanguageDetectorService
 
+
+print(Config.TRANSLATION_LLM_URL)
+print(Config.FALLBACK_TRANSLATION_LLM_URL)
+
 TranslationLLMClient = Client(host=Config.TRANSLATION_LLM_URL)
 FallbackLLMClient = Client(host=Config.FALLBACK_TRANSLATION_LLM_URL)
 _detector = LanguageDetectorService()
