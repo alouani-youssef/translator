@@ -1,89 +1,46 @@
 import sys
 import argparse
 from pathlib import Path
+
 from src.config import Config
-from src.file_handler import translate_folder
+from src.file import translate_folder
+from src.db import init_db
+from src.queue_manager import db_queue
+from src.validation import validator
+from args import parse_args, apply_config, validate_input_path
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Translate JSON files to a target language using Ollama",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python main.py
-  python main.py --input ./my_jsons --output ./translated
-  python main.py --model mistral --lang Spanish
-        """,
-    )
-    parser.add_argument(
-        "--input",
-        type=str,
-        default=Config.INPUT_FOLDER,
-        help=f"Input folder with JSON files (default: {Config.INPUT_FOLDER})",
-    )
 
-    parser.add_argument(
-        "--output",
-        type=str,
-        default=Config.OUTPUT_FOLDER,
-        help=f"Output folder for translated files (default: {Config.OUTPUT_FOLDER})",
-    )
 
-    parser.add_argument(
-        "--model",
-        type=str,
-        default=Config.LLM_MODEL,
-        help=f"Ollama model name (default: {Config.LLM_MODEL})",
-    )
-
-    parser.add_argument(
-        "--lang",
-        type=str,
-        default=Config.TARGET_LANGUAGE,
-        help=f"Target language (default: {Config.TARGET_LANGUAGE})",
-    )
-
-    parser.add_argument(
-        "--url",
-        type=str,
-        default=Config.LLM_URL,
-        help=f"Ollama base URL (default: {Config.LLM_URL})",
-    )
-    
-    parser.add_argument(
-        "--workers",
-        "-w",
-        type=int,
-        default=Config.MAX_WORKERS,
-        help=f"Number of parallel workers (default: {Config.MAX_WORKERS})",
-    )
-
-    args = parser.parse_args()
-    Config.INPUT_FOLDER = args.input
-    Config.OUTPUT_FOLDER = args.output
-    Config.LLM_MODEL = args.model
-    Config.TARGET_LANGUAGE = args.lang
-    Config.OLLAMA_BASE_URL = args.url
-    Config.MAX_WORKERS = args.workers
-
-    input_path = Path(Config.INPUT_FOLDER)
-    if not input_path.exists():
-        print(f"❌ Error: Input folder does not exist: {input_path}")
-        sys.exit(1)
-
-    if not input_path.is_dir():
-        print(f"❌ Error: Input path is not a directory: {input_path}")
-        sys.exit(1)
+def run() -> int:
+    args = parse_args()
+    apply_config(args)
 
     try:
+        validate_input_path(Config.INPUT_FOLDER)
+        print("🗄️ Initializing database...")
+        init_db()
+        db_queue.start()
+        validator.start()
+        print("🚀 Starting translation pipeline...")
         success_count = translate_folder()
-        sys.exit(0 if success_count > 0 else 1)
+        print("-" * 50)
+        print(f"✅ Completed. Files translated: {success_count}")
+        return 0 if success_count > 0 else 1
+    except ValueError as e:
+        print(f"❌ {e}")
+        return 1
     except KeyboardInterrupt:
-        print("\n\n⚠️  Translation interrupted by user")
-        sys.exit(130)
+        print("\n⚠️ Translation interrupted by user")
+        return 130
+
     except Exception as e:
         print(f"\n❌ Unexpected error: {e}")
-        sys.exit(1)
+        return 1
+
+
+def main() -> None:
+    exit_code = run()
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":
