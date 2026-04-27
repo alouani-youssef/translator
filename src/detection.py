@@ -1,13 +1,22 @@
 from lingua import Language, LanguageDetectorBuilder
 from typing import Optional
 
-
+target_languages = [
+                Language.ARABIC,
+                Language.FRENCH,
+                Language.ENGLISH,
+                Language.SPANISH,
+                Language.CHINESE,
+                Language.HEBREW,
+                Language.PERSIAN,
+                Language.TURKISH
+]
 class LanguageDetectorService:
     def __init__(self, languages: Optional[list[Language]] = None):
         if languages:
             self.detector = LanguageDetectorBuilder.from_languages(*languages).build()
-        else:
-            self.detector = LanguageDetectorBuilder.from_all_languages().build()
+        else:        
+            self.detector = LanguageDetectorBuilder.from_languages(*target_languages).build()
 
     def detect(self, text: str) -> Optional[str]:
         if not text or not text.strip():

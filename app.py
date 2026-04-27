@@ -1,24 +1,22 @@
 from flask import Flask
 from flasgger import Swagger
-from server.routes.api_routes import api_bp
+from server.routes import api_bp
+from src.config import Config
 import logging
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def create_app():
     app = Flask(__name__)
-    
-    # Configure Swagger
     swagger_config = {
         "headers": [],
         "specs": [
             {
                 "endpoint": 'apispec_1',
                 "route": '/apispec_1.json',
-                "rule_filter": lambda rule: True,  # all in
-                "model_filter": lambda tag: True,  # all in
+                "rule_filter": lambda rule: True,  
+                "model_filter": lambda tag: True,  
             }
         ],
         "static_url_path": "/flasgger_static",
@@ -33,7 +31,6 @@ def create_app():
     
     Swagger(app, config=swagger_config)
     
-    # Register Blueprints
     app.register_blueprint(api_bp)
 
     @app.route('/')
@@ -44,4 +41,5 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(host='0.0.0.0', port=5005, debug=True)
+    debug_mode = Config.DEPLOYMENT_MODE == "development"
+    app.run(host=Config.HOST, port=Config.PORT, debug=debug_mode)

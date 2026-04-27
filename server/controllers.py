@@ -1,6 +1,6 @@
 from flask import request, jsonify
-from server.services.translation_service import TranslationService, DetectionService
-from server.dtos.translation_dto import TranslateTextRequest, DetectLanguageRequest
+from server.services import TranslationService, DetectionService
+from server.dtos import TranslateTextRequest, DetectLanguageRequest
 from pydantic import ValidationError
 
 translation_service = TranslationService()

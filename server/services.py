@@ -8,7 +8,6 @@ class TranslationService:
         self._detector = LanguageDetectorService()
 
     def translate_text(self, contents: List[str], target_lang: str, source_lang: Optional[str] = None) -> List[Dict[str, Any]]:
-        # Default context for translation
         context = {
             "summary": Config.GLOBAL_CONTEXT_FALLBACK,
             "industry": Config.DEFAULT_INDUSTRY,
@@ -18,7 +17,6 @@ class TranslationService:
             "glossary": {}
         }
 
-        # If source language is not provided, detect it from the first content
         detected_source = None
         if not source_lang and contents:
             detected_source = self._detector.detect(contents[0])

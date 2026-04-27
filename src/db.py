@@ -75,6 +75,19 @@ def init_db():
             CREATE TRIGGER trg_translations_updated_at
                 BEFORE UPDATE ON translation_operations
                 FOR EACH ROW EXECUTE PROCEDURE update_updated_at();
+
+            CREATE TABLE IF NOT EXISTS operations_logs (
+                id                  SERIAL PRIMARY KEY,
+                filename            TEXT,
+                property            TEXT,
+                value               TEXT,
+                translation         TEXT,
+                language            TEXT,
+                translation_language TEXT,
+                is_successed        BOOLEAN,
+                translation_time    FLOAT,
+                created_at          TIMESTAMPTZ DEFAULT NOW()
+            );
         """)
     print("✅ Database initialized")
 
@@ -126,6 +139,11 @@ def upsert_translation(
                 input_size           = EXCLUDED.input_size,
                 output_size          = EXCLUDED.output_size,
                 size_difference      = EXCLUDED.size_difference;
+
+            INSERT INTO operations_logs
+                (filename, property, value, translation, language, translation_language, is_successed, translation_time)
+            VALUES
+                (%(filename)s, %(property)s, %(value)s, %(translation)s, %(language)s, %(translation_language)s, %(is_successed)s, %(translation_time)s);
         """, {
             "filename": filename,
             "property": property,
@@ -181,6 +199,18 @@ def bulk_upsert_translations(records: list[dict]):
                 input_size           = EXCLUDED.input_size,
                 output_size          = EXCLUDED.output_size,
                 size_difference      = EXCLUDED.size_difference;
+            """,
+            records,
+            page_size=100,
+        )
+
+        psycopg2.extras.execute_batch(
+            cur,
+            """
+            INSERT INTO operations_logs
+                (filename, property, value, translation, language, translation_language, is_successed, translation_time)
+            VALUES
+                (%(filename)s, %(property)s, %(value)s, %(translation)s, %(language)s, %(translation_language)s, %(is_successed)s, %(translation_time)s);
             """,
             records,
             page_size=100,

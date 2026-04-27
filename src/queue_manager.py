@@ -2,7 +2,7 @@ import queue
 import threading
 import time
 from typing import List, Dict, Any, Callable
-from src.db import upsert_translation, bulk_upsert_translations
+from src.db import  bulk_upsert_translations
 
 class QueueManager:
     def __init__(self, batch_size: int = 50, flush_interval: int = 5):
