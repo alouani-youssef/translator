@@ -1,5 +1,6 @@
 import json
 import re
+import hashlib
 from typing import Any, Dict, List, Tuple
 from src.translator import translate_batch
 from src.context import build_context, generate_summary
@@ -92,26 +93,31 @@ def translate_file_content(filename: str, data: Any, state=None) -> Any:
 
     content_str = json.dumps(data, ensure_ascii=False)
 
-    # --- per-file summary ---
-    cache_key = f"summary:{filename}"
-    summary = state.get(cache_key) if state else None
-    if not summary:
-        summary = generate_summary(filename, content_str)
+    content_hash = hashlib.md5(content_str.encode("utf-8")).hexdigest()
+    context_cache_key = f"context:{filename}:{content_hash}"
+    
+    context = None
+    if state:
+        cached_context = state.get(context_cache_key)
+        if cached_context:
+            if isinstance(cached_context, bytes):
+                cached_context = cached_context.decode("utf-8")
+            context = json.loads(cached_context)
+
+    if not context:
+        context = build_context(
+            filename,
+            content_str,
+        )
         if state:
-            state.set(cache_key, summary, expire=86400)
+            state.set(context_cache_key, json.dumps(context), expire=86400)
+
 
     # --- global summary (set externally, read-only here) ---
     global_summary = state.get("global_summary") if state else ""
     if isinstance(global_summary, bytes):
         global_summary = global_summary.decode("utf-8")
     global_summary = global_summary or ""
-
-    context = build_context(
-        filename,
-        content_str,
-        properties={"summary": summary}
-    )
-
 
     items = extract_strings(data)
 

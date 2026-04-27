@@ -211,7 +211,9 @@ def build_context(
         "entities": [],
         "glossary": {},
     }
-    summary = generate_summary(filename, content)
+    summary = properties.get("summary")
+    if not summary:
+        summary = generate_summary(filename, content)
     enriched = enrich_context_with_llm(filename, content, base_context)
 
     final_context: Dict[str, Any] = {
