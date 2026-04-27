@@ -16,5 +16,4 @@ class Config:
     INPUT_FOLDER: str = os.getenv("INPUT_FOLDER", "./content/en")
     OUTPUT_FOLDER: str = os.getenv("OUTPUT_FOLDER", "./content/ar")
     MAX_WORKERS: int = int(os.getenv("MAX_WORKERS", "5"))
-    N_CANDIDATES: int = int(os.getenv("N_CANDIDATES", "3"))
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")

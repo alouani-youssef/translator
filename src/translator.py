@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from ollama import Client
 from typing import List, Dict, Any, Optional
 from src.config import Config
@@ -64,13 +65,15 @@ Entities to preserve:
 
 
 def ollama_chat(prompt: str, temperature: float = 0.3) -> str:
-    print(f"Prompt: {prompt}")
+    request_time = time.time()
+    print(f"Sending request to Ollama to the Client {llm_translate_client}")
     response = llm_translate_client.chat(
         model=Config.TRANSLATION_LLM,
         messages=[{"role": "user", "content": prompt}],
         options={"temperature": temperature},
     )
-    print(f"Response: {response}")
+    response_time = time.time()
+    print(f"Response Received in {response_time - request_time} seconds")
     return response["message"]["content"].strip()
 
 
@@ -100,15 +103,13 @@ def translate_batch(
         else:
             missing_texts.append(text)
             missing_indexes.append(i)
-
     if missing_texts:
         try:
             prompt = build_batch_prompt(missing_texts, context)
-
             raw = ollama_chat(prompt)
             cleaned = extract_json(raw)
             parsed = json.loads(cleaned)
-
+            
             if not isinstance(parsed, list):
                 raise ValueError("Invalid LLM response format")
 

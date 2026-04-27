@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 from src.config import Config
-from src.file_handler import translate_folder
+from src.file import translate_folder
 
 
 

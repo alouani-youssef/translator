@@ -113,8 +113,8 @@ src/
 ├── main.py
 ├── config.py
 │
-├── file_handler.py
-├── json_walker.py
+├── file.py
+├── json.py
 ├── translator.py
 │
 ├── context/
