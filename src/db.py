@@ -20,7 +20,6 @@ def get_cursor():
 
 
 def init_db():
-    """Create the translation_operations table if it doesn't exist."""
     with get_cursor() as cur:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS translation_operations (
@@ -100,9 +99,6 @@ def upsert_translation(
     is_verified: bool = False,
     verified_at = None,
 ):
-    """
-    Insert or update a translation record.
-    """
     with get_cursor() as cur:
         cur.execute("""
             INSERT INTO translation_operations
@@ -153,9 +149,6 @@ def upsert_translation(
 
 
 def bulk_upsert_translations(records: list[dict]):
-    """
-    Bulk insert/update a list of translation records.
-    """
     if not records:
         return
 
@@ -195,7 +188,6 @@ def bulk_upsert_translations(records: list[dict]):
 
 
 def get_pending_validations(limit: int = 50):
-    """Get records that haven't been verified yet."""
     with get_cursor() as cur:
         cur.execute("""
             SELECT id, value, translation, language, translation_language 
@@ -208,7 +200,6 @@ def get_pending_validations(limit: int = 50):
 
 
 def update_approval_status(record_id: int, is_approved: bool, notes: str = None):
-    """Update the approval and verification status of a record."""
     with get_cursor() as cur:
         cur.execute("""
             UPDATE translation_operations 
@@ -218,3 +209,19 @@ def update_approval_status(record_id: int, is_approved: bool, notes: str = None)
                 notes = COALESCE(%s, notes) 
             WHERE id = %s;
         """, (is_approved, notes, record_id))
+
+def get_approved_translations(texts: list[str], source_lang: str, target_lang: str) -> dict[str, str]:
+    if not texts:
+        return {}
+    
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT value, translation 
+            FROM translation_operations 
+            WHERE value = ANY(%s) 
+              AND language = %s 
+              AND translation_language = %s 
+              AND is_successed = TRUE 
+              AND is_approved = TRUE
+        """, (texts, source_lang, target_lang))
+        return {row['value']: row['translation'] for row in cur.fetchall()}

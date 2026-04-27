@@ -6,6 +6,7 @@ from typing import List, Dict, Any, Optional
 from src.config import Config
 from src import prompts
 from src.detection import LanguageDetectorService
+from src.db import get_approved_translations
 
 
 print(Config.TRANSLATION_LLM_URL)
@@ -83,6 +84,12 @@ def translate_batch(
     missing_indexes: List[int] = []
     size_rules: List[str] = []
 
+    try:
+        approved_db_translations = get_approved_translations(texts, Config.SOURCE_LANGUAGE, Config.TARGET_LANGUAGE)
+    except Exception as e:
+        print(f"⚠️ Failed to fetch approved translations from DB: {e}")
+        approved_db_translations = {}
+
     for i, text in enumerate(texts):
         # 1. Check if the text has any language
         detected_input = _detector.detect(text)
@@ -124,6 +131,26 @@ def translate_batch(
                 "size_difference": size_diff,
                 "is_approved": False
             }
+        elif text in approved_db_translations:
+            db_trans = approved_db_translations[text]
+            detected_output = _detector.detect(db_trans)
+            expected_lang = Config.TARGET_LANGUAGE.lower()[:2]
+            size_diff = abs(len(db_trans) - len(text)) / max(len(text), 1)
+            
+            results[i] = {
+                "translation": db_trans,
+                "detected_input": detected_input,
+                "detected_output": detected_output,
+                "is_successed": True,
+                "duration": 0,
+                "input_size": len(text),
+                "output_size": len(db_trans),
+                "size_difference": size_diff,
+                "is_approved": True,
+                "skip_db": True # Already in DB, approved and succeeded
+            }
+            if redis_client:
+                redis_client.set(cache_key, db_trans, expire=86400)
         else:
             missing_texts.append(text)
             missing_indexes.append(i)
