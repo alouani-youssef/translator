@@ -4,6 +4,8 @@ from pathlib import Path
 
 from src.config import Config
 from src.file import translate_folder
+from src.db import init_db
+from src.queue_manager import db_queue
 from args import parse_args, apply_config, validate_input_path
 
 
@@ -14,6 +16,9 @@ def run() -> int:
 
     try:
         validate_input_path(Config.INPUT_FOLDER)
+        print("🗄️ Initializing database...")
+        init_db()
+        db_queue.start()
         print("🚀 Starting translation pipeline...")
         success_count = translate_folder()
         print("-" * 50)

@@ -3,6 +3,8 @@ import re
 from typing import Any, Dict, List, Tuple
 from src.translator import translate_batch
 from src.context import build_context, generate_summary
+from src.queue_manager import db_queue
+from src.config import Config
 
 
 _DATE_PATTERNS = [
@@ -90,16 +92,20 @@ def translate_file_content(filename: str, data: Any, state=None) -> Any:
 
     content_str = json.dumps(data, ensure_ascii=False)
 
+    # --- per-file summary ---
     cache_key = f"summary:{filename}"
-
-    summary = None
-    if state:
-        summary = state.get(cache_key)
-
+    summary = state.get(cache_key) if state else None
     if not summary:
         summary = generate_summary(filename, content_str)
         if state:
             state.set(cache_key, summary, expire=86400)
+
+    # --- global summary (set externally, read-only here) ---
+    global_summary = state.get("global_summary") if state else ""
+    if isinstance(global_summary, bytes):
+        global_summary = global_summary.decode("utf-8")
+    global_summary = global_summary or ""
+
     context = build_context(
         filename,
         content_str,
@@ -116,15 +122,38 @@ def translate_file_content(filename: str, data: Any, state=None) -> Any:
 
 
     BATCH_SIZE = 20
-    translated_results = []
 
     for i in range(0, len(texts), BATCH_SIZE):
-        batch = texts[i:i + BATCH_SIZE]
-        translated_batch = translate_batch(list(batch), context)
-        translated_results.extend(translated_batch)
-
-
-    for path, translated in zip(paths, translated_results):
-        set_value(data, path, translated)
+        batch_paths = paths[i:i + BATCH_SIZE]
+        batch_texts = texts[i:i + BATCH_SIZE]
+        
+        translated_batch = translate_batch(list(batch_texts), context, redis_client=state, global_summary=global_summary)
+        
+        batch_records = []
+        for path, original, res in zip(batch_paths, batch_texts, translated_batch):
+            translated = res["translation"]
+            set_value(data, path, translated)
+            
+            batch_records.append({
+                "filename": filename,
+                "property": path,
+                "value": original,
+                "language": Config.SOURCE_LANGUAGE,
+                "translation": translated,
+                "translation_language": Config.TARGET_LANGUAGE,
+                "detected_input_lang": res.get("detected_input"),
+                "detected_output_lang": res.get("detected_output"),
+                "is_successed": res.get("is_successed", False),
+                "score": None,
+                "is_approved": False,
+                "notes": None,
+                "translation_time": res.get("duration"),
+                "input_size": res.get("input_size"),
+                "output_size": res.get("output_size")
+            })
+        
+        if batch_records:
+            db_queue.push_batch(batch_records)
+            # print(f"📥 Queued batch of {len(batch_records)} translations for {filename}")
 
     return data

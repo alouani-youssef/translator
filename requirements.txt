@@ -10,3 +10,4 @@ ollama
 langchain
 langchain-chroma
 langchain-ollama
+psycopg2-binary

@@ -2,6 +2,8 @@ import sys
 import argparse
 from pathlib import Path
 
+from src.config import Config
+
 
 
 def parse_args() -> argparse.Namespace:
@@ -83,4 +85,3 @@ def validate_input_path(path: str) -> Path:
     return input_path
 
 
-devf

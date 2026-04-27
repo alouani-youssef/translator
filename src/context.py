@@ -4,8 +4,8 @@ import hashlib
 from ollama import Client
 from typing import Dict, Any, List, Optional
 from src.config import Config
-print(f"Lunching Summary Client On : {Config.SUMMARIZE_LLM_URL}. The Model Is Used For Content Management")
-llm_summary_client = Client(host=Config.SUMMARIZE_LLM_URL)
+from src import prompts
+SummaryLLMClient = Client(host=Config.SUMMARIZE_LLM_URL)
 
 def infer_content_type(filename: str, path: str = "") -> str:
     name = filename.lower()
@@ -90,27 +90,12 @@ def extract_json(raw: str) -> str:
     return raw
 
 
-def build_summary_prompt(filename: str, content: str) -> str:
-    return f"""
-    You are an expert content strategist.
-    Summarize the following file, in a single pharagraph, because it will be used as a context for translation:
-    File name: {filename}
-    Content:
-    \"\"\"
-    {content}
-    \"\"\"
-    Rules:
-    - Plain text only
-    - No JSON
-    - No explanation
-    - Keep it short and clear
-"""
 
 
 def generate_summary(filename: str, content: str) -> str:
     try:
-        prompt = build_summary_prompt(filename, content)
-        response = llm_summary_client.chat(
+        prompt = prompts.build_summary_prompt(filename, content)
+        response = SummaryLLMClient.chat(
             model=Config.SUMMARIZE_LLM,
             messages=[{"role": "user", "content": prompt}],
             options={"temperature": 0.2},
@@ -122,40 +107,6 @@ def generate_summary(filename: str, content: str) -> str:
         print(f"⚠️ Summary generation failed: {e}")
         return ""
 
-def build_context_prompt(
-    filename: str,
-    content: str,
-    base_context: Dict[str, Any]
-) -> str:
-    return f"""
-You are an expert content strategist and SEO analyst for a Restaurant Management SaaS.
-
-Analyze the following file and generate structured context.
-
-File name: {filename}
-Base context: {json.dumps(base_context, ensure_ascii=False)}
-
-Content (first 2000 chars):
-\"\"\"
-{content[:2000]}
-\"\"\"
-
-Return ONLY a raw JSON object with these exact keys:
-
-{{
-  "industry": "string describing the industry",
-  "tone": "string describing the writing tone",
-  "audience": "string describing the target audience",
-  "keywords": ["list", "of", "important", "keywords"],
-  "entities": ["list", "of", "important", "brand", "or", "product", "names"],
-  "glossary": {{"source_term": "target_term"}}
-}}
-
-Rules:
-- No summary here
-- Be concise
-- No prose outside JSON
-"""
 
 
 def generate_global_context(files: List[Dict[str, Any]]) -> str:
@@ -187,39 +138,9 @@ def generate_global_context(files: List[Dict[str, Any]]) -> str:
                 "content": content
             })
 
-        prompt = f"""
-You are an expert global SEO and content strategist.
+        prompt = prompts.build_global_context_prompt(compact_files)
 
-You are analyzing a full application containing multiple content files.
-
-Your task is to generate a SINGLE unified global context that represents the entire system.
-
-Files:
-{json.dumps(compact_files, ensure_ascii=False, indent=2)}
-
-Return ONLY a raw JSON object with this structure:
-
-{{
-  "industry": "string describing the overall industry",
-  "tone": "global tone of all content",
-  "audience": "primary target audience",
-  "keywords": ["most important global keywords"],
-  "entities": ["brands", "products", "services mentioned across files"],
-  "glossary": {{
-    "source_term": "standardized_term"
-  }},
-  "summary": "1 paragraph describing the entire system"
-}}
-
-Rules:
-- Be consistent across files
-- Merge repeated concepts
-- Avoid duplication
-- No explanations
-- Output ONLY valid JSON
-"""
-
-        response = llm_summary_client.chat(
+        response = SummaryLLMClient.chat(
             model=Config.SUMMARIZE_LLM,
             messages=[{"role": "user", "content": prompt}],
             options={"temperature": 0.2},
@@ -236,7 +157,7 @@ Rules:
         print(f"⚠️ Global context generation failed: {e}")
 
     # fallback
-    return "Restaurant management software helps restaurant owners and managers streamline daily operations such as orders, staff coordination, inventory, and performance tracking. It improves efficiency, reduces errors, and provides data-driven insights to support better decision-making. By optimizing workflows and enhancing service speed and accuracy, it also improves customer satisfaction. Overall, it acts as a strategic tool that helps restaurants operate more smoothly, grow sustainably, and deliver better dining experiences."
+    return Config.GLOBAL_CONTEXT_FALLBACK
 
 
 
@@ -246,9 +167,9 @@ def enrich_context_with_llm(
     base_context: Dict[str, Any]
 ) -> Dict[str, Any]:
     try:
-        prompt = build_context_prompt(filename, content, base_context)
+        prompt = prompts.build_context_prompt(filename, content, base_context)
 
-        response = llm_summary_client.chat(
+        response = SummaryLLMClient.chat(
             model=Config.SUMMARIZE_LLM,
             messages=[{"role": "user", "content": prompt}],
             options={"temperature": 0.2},
@@ -284,9 +205,9 @@ def build_context(
         "content_type": content_type,
         "intent": intent,
         "keywords": extract_keywords_basic(content),
-        "industry": properties.get("industry", "Restaurant Management Software"),
-        "tone": properties.get("tone", "professional, friendly, and persuasive"),
-        "audience": properties.get("audience", "restaurant owners and managers"),
+        "industry": properties.get("industry", Config.DEFAULT_INDUSTRY),
+        "tone": properties.get("tone", Config.DEFAULT_TONE),
+        "audience": properties.get("audience", Config.DEFAULT_AUDIENCE),
         "entities": [],
         "glossary": {},
     }

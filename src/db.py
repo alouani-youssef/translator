@@ -1,0 +1,171 @@
+import psycopg2
+import psycopg2.extras
+from contextlib import contextmanager
+from src.config import Config
+
+
+def get_connection():
+    return psycopg2.connect(Config.DATABASE_URL)
+
+
+@contextmanager
+def get_cursor():
+    conn = get_connection()
+    try:
+        with conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                yield cur
+    finally:
+        conn.close()
+
+
+def init_db():
+    """Create the translation_operations table if it doesn't exist."""
+    with get_cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS translation_operations (
+                id                  SERIAL PRIMARY KEY,
+                filename            TEXT        NOT NULL,
+                property            TEXT        NOT NULL,
+                value               TEXT        NOT NULL,
+                language            TEXT        NOT NULL,
+                translation         TEXT,
+                translation_language TEXT,
+                detected_input_lang TEXT,
+                detected_output_lang TEXT,
+                is_successed        BOOLEAN     DEFAULT FALSE,
+                score               FLOAT       DEFAULT NULL,
+                is_approved         BOOLEAN     DEFAULT FALSE,
+                notes               TEXT        DEFAULT NULL,
+                translation_time    FLOAT       DEFAULT NULL,
+                input_size          INTEGER     DEFAULT NULL,
+                output_size         INTEGER     DEFAULT NULL,
+                created_at          TIMESTAMPTZ DEFAULT NOW(),
+                updated_at          TIMESTAMPTZ DEFAULT NOW(),
+                CONSTRAINT idx_translations_unique UNIQUE (filename, property, language, translation_language)
+            );
+
+            -- Ensure constraint exists if table was created without it
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'idx_translations_unique') THEN
+                    ALTER TABLE translation_operations ADD CONSTRAINT idx_translations_unique UNIQUE (filename, property, language, translation_language);
+                END IF;
+            END $$;
+
+            CREATE OR REPLACE FUNCTION update_updated_at()
+            RETURNS TRIGGER LANGUAGE plpgsql AS $$
+            BEGIN
+                NEW.updated_at = NOW();
+                RETURN NEW;
+            END;
+            $$;
+
+            DROP TRIGGER IF EXISTS trg_translations_updated_at ON translation_operations;
+            CREATE TRIGGER trg_translations_updated_at
+                BEFORE UPDATE ON translation_operations
+                FOR EACH ROW EXECUTE PROCEDURE update_updated_at();
+        """)
+    print("✅ Database initialized")
+
+
+def upsert_translation(
+    filename: str,
+    property: str,
+    value: str,
+    language: str,
+    translation: str,
+    translation_language: str,
+    detected_input_lang: str = None,
+    detected_output_lang: str = None,
+    is_successed: bool = False,
+    score: float = None,
+    is_approved: bool = False,
+    notes: str = None,
+    translation_time: float = None,
+    input_size: int = None,
+    output_size: int = None,
+):
+    """
+    Insert or update a translation record.
+    """
+    with get_cursor() as cur:
+        cur.execute("""
+            INSERT INTO translation_operations
+                (filename, property, value, language, translation, translation_language, 
+                 detected_input_lang, detected_output_lang, is_successed, score, is_approved, notes, 
+                 translation_time, input_size, output_size)
+            VALUES
+                (%(filename)s, %(property)s, %(value)s, %(language)s, %(translation)s,
+                 %(translation_language)s, %(detected_input_lang)s, %(detected_output_lang)s, 
+                 %(is_successed)s, %(score)s, %(is_approved)s, %(notes)s, 
+                 %(translation_time)s, %(input_size)s, %(output_size)s)
+            ON CONFLICT (filename, property, language, translation_language)
+            DO UPDATE SET
+                value                = EXCLUDED.value,
+                translation          = EXCLUDED.translation,
+                detected_input_lang  = EXCLUDED.detected_input_lang,
+                detected_output_lang = EXCLUDED.detected_output_lang,
+                is_successed         = EXCLUDED.is_successed,
+                score                = EXCLUDED.score,
+                is_approved          = EXCLUDED.is_approved,
+                notes                = EXCLUDED.notes,
+                translation_time     = EXCLUDED.translation_time,
+                input_size           = EXCLUDED.input_size,
+                output_size          = EXCLUDED.output_size;
+        """, {
+            "filename": filename,
+            "property": property,
+            "value": value,
+            "language": language,
+            "translation": translation,
+            "translation_language": translation_language,
+            "detected_input_lang": detected_input_lang,
+            "detected_output_lang": detected_output_lang,
+            "is_successed": is_successed,
+            "score": score,
+            "is_approved": is_approved,
+            "notes": notes,
+            "translation_time": translation_time,
+            "input_size": input_size,
+            "output_size": output_size,
+        })
+
+
+def bulk_upsert_translations(records: list[dict]):
+    """
+    Bulk insert/update a list of translation records.
+    """
+    if not records:
+        return
+
+    with get_cursor() as cur:
+        psycopg2.extras.execute_batch(
+            cur,
+            """
+            INSERT INTO translation_operations
+                (filename, property, value, language, translation, translation_language, 
+                 detected_input_lang, detected_output_lang, is_successed, score, is_approved, notes, 
+                 translation_time, input_size, output_size)
+            VALUES
+                (%(filename)s, %(property)s, %(value)s, %(language)s, %(translation)s,
+                 %(translation_language)s, %(detected_input_lang)s, %(detected_output_lang)s, 
+                 %(is_successed)s, %(score)s, %(is_approved)s, %(notes)s, 
+                 %(translation_time)s, %(input_size)s, %(output_size)s)
+            ON CONFLICT (filename, property, language, translation_language)
+            DO UPDATE SET
+                value                = EXCLUDED.value,
+                translation          = EXCLUDED.translation,
+                detected_input_lang  = EXCLUDED.detected_input_lang,
+                detected_output_lang = EXCLUDED.detected_output_lang,
+                is_successed         = EXCLUDED.is_successed,
+                score                = EXCLUDED.score,
+                is_approved          = EXCLUDED.is_approved,
+                notes                = EXCLUDED.notes,
+                translation_time     = EXCLUDED.translation_time,
+                input_size           = EXCLUDED.input_size,
+                output_size          = EXCLUDED.output_size;
+            """,
+            records,
+            page_size=100,
+        )

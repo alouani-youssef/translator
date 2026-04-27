@@ -4,7 +4,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from src.config import Config
-from src.json translate_file_content
+from src.json import translate_file_content
 from src.state import StateManager
 
 
