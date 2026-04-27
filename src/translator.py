@@ -136,7 +136,8 @@ def translate_batch(
                 Config.SOURCE_LANGUAGE,
                 Config.TARGET_LANGUAGE,
                 global_summary=global_summary,
-                size_rules=size_rules
+                size_rules=size_rules,
+                size_margin_pct=Config.SIZE_MARGIN_PRIMARY
             )
             
             # --- Primary Attempt ---
@@ -190,7 +191,8 @@ def translate_batch(
                         Config.SOURCE_LANGUAGE,
                         Config.TARGET_LANGUAGE,
                         global_summary=global_summary,
-                        size_rules=[f"'{original[:20]}...': target {input_len}±{margin_primary} chars"]
+                        size_rules=[f"'{original[:20]}...': target {input_len}±{margin_primary} chars"],
+                        size_margin_pct=Config.SIZE_MARGIN_FALLBACK
                     )
                     try:
                         raw_fb = ollama_chat(single_prompt, FallbackLLMClient, Config.FALLBACK_TRANSLATION_LLM)
