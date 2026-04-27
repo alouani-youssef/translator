@@ -40,6 +40,7 @@ def init_db():
                 translation_time    FLOAT       DEFAULT NULL,
                 input_size          INTEGER     DEFAULT NULL,
                 output_size         INTEGER     DEFAULT NULL,
+                size_difference     FLOAT       DEFAULT NULL,
                 created_at          TIMESTAMPTZ DEFAULT NOW(),
                 updated_at          TIMESTAMPTZ DEFAULT NOW(),
                 CONSTRAINT idx_translations_unique UNIQUE (filename, property, language, translation_language)
@@ -85,6 +86,7 @@ def upsert_translation(
     translation_time: float = None,
     input_size: int = None,
     output_size: int = None,
+    size_difference: float = None,
 ):
     """
     Insert or update a translation record.
@@ -94,12 +96,12 @@ def upsert_translation(
             INSERT INTO translation_operations
                 (filename, property, value, language, translation, translation_language, 
                  detected_input_lang, detected_output_lang, is_successed, score, is_approved, notes, 
-                 translation_time, input_size, output_size)
+                 translation_time, input_size, output_size, size_difference)
             VALUES
                 (%(filename)s, %(property)s, %(value)s, %(language)s, %(translation)s,
                  %(translation_language)s, %(detected_input_lang)s, %(detected_output_lang)s, 
                  %(is_successed)s, %(score)s, %(is_approved)s, %(notes)s, 
-                 %(translation_time)s, %(input_size)s, %(output_size)s)
+                 %(translation_time)s, %(input_size)s, %(output_size)s, %(size_difference)s)
             ON CONFLICT (filename, property, language, translation_language)
             DO UPDATE SET
                 value                = EXCLUDED.value,
@@ -112,7 +114,8 @@ def upsert_translation(
                 notes                = EXCLUDED.notes,
                 translation_time     = EXCLUDED.translation_time,
                 input_size           = EXCLUDED.input_size,
-                output_size          = EXCLUDED.output_size;
+                output_size          = EXCLUDED.output_size,
+                size_difference      = EXCLUDED.size_difference;
         """, {
             "filename": filename,
             "property": property,
@@ -129,6 +132,7 @@ def upsert_translation(
             "translation_time": translation_time,
             "input_size": input_size,
             "output_size": output_size,
+            "size_difference": size_difference,
         })
 
 
@@ -146,12 +150,12 @@ def bulk_upsert_translations(records: list[dict]):
             INSERT INTO translation_operations
                 (filename, property, value, language, translation, translation_language, 
                  detected_input_lang, detected_output_lang, is_successed, score, is_approved, notes, 
-                 translation_time, input_size, output_size)
+                 translation_time, input_size, output_size, size_difference)
             VALUES
                 (%(filename)s, %(property)s, %(value)s, %(language)s, %(translation)s,
                  %(translation_language)s, %(detected_input_lang)s, %(detected_output_lang)s, 
                  %(is_successed)s, %(score)s, %(is_approved)s, %(notes)s, 
-                 %(translation_time)s, %(input_size)s, %(output_size)s)
+                 %(translation_time)s, %(input_size)s, %(output_size)s, %(size_difference)s)
             ON CONFLICT (filename, property, language, translation_language)
             DO UPDATE SET
                 value                = EXCLUDED.value,
@@ -164,8 +168,32 @@ def bulk_upsert_translations(records: list[dict]):
                 notes                = EXCLUDED.notes,
                 translation_time     = EXCLUDED.translation_time,
                 input_size           = EXCLUDED.input_size,
-                output_size          = EXCLUDED.output_size;
+                output_size          = EXCLUDED.output_size,
+                size_difference      = EXCLUDED.size_difference;
             """,
             records,
             page_size=100,
         )
+
+
+def get_pending_validations(limit: int = 50):
+    """Get records that haven't been approved or rejected yet."""
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT id, value, translation, language, translation_language 
+            FROM translation_operations 
+            WHERE is_approved IS FALSE 
+            ORDER BY created_at ASC 
+            LIMIT %s;
+        """, (limit,))
+        return cur.fetchall()
+
+
+def update_approval_status(record_id: int, is_approved: bool, notes: str = None):
+    """Update the approval status of a record."""
+    with get_cursor() as cur:
+        cur.execute("""
+            UPDATE translation_operations 
+            SET is_approved = %s, notes = COALESCE(%s, notes) 
+            WHERE id = %s;
+        """, (is_approved, notes, record_id))

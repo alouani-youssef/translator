@@ -16,7 +16,7 @@ class QueueManager:
         if self._worker_thread is None:
             self._worker_thread = threading.Thread(target=self._worker, daemon=True)
             self._worker_thread.start()
-            print("🧵 Database queue worker started.")
+            print(f"🧵 Database queue worker started. Thread ID: {self._worker_thread.ident}")
 
     def stop(self):
         self._stop_event.set()

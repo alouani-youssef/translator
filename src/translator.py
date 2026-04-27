@@ -27,7 +27,7 @@ def get_placeholders(text: str) -> List[str]:
 def check_placeholders(original: str, translated: str) -> bool:
     orig_placeholders = get_placeholders(original)
     trans_placeholders = get_placeholders(translated)
-    return orig_placeholders == trans_placeholders
+    return sorted(orig_placeholders) == sorted(trans_placeholders)
 
 def extract_json(raw: str) -> str:
     raw = re.sub(r"```(?:json)?\s*", "", raw)
@@ -77,12 +77,13 @@ def translate_batch(
     results: List[Optional[Dict[str, Any]]] = [None] * len(texts)
     missing_texts: List[str] = []
     missing_indexes: List[int] = []
+    size_rules: List[str] = []
 
     for i, text in enumerate(texts):
         # 1. Check if the text has any language
         detected_input = _detector.detect(text)
         if detected_input is None:
-            # print(f"ℹ️ No language detected for '{text[:20]}...' - skipping translation")
+            # Skip translation and database storage for non-language content
             results[i] = {
                 "translation": text,
                 "detected_input": None,
@@ -90,7 +91,10 @@ def translate_batch(
                 "is_successed": True,
                 "duration": 0,
                 "input_size": len(text),
-                "output_size": len(text)
+                "output_size": len(text),
+                "size_difference": 0.0,
+                "is_approved": True,
+                "skip_db": True # Custom flag for json.py
             }
             continue
 
@@ -103,6 +107,7 @@ def translate_batch(
             
             detected_output = _detector.detect(cached)
             expected_lang = Config.TARGET_LANGUAGE.lower()[:2]
+            size_diff = abs(len(cached) - len(text)) / max(len(text), 1)
             
             results[i] = {
                 "translation": cached,
@@ -111,11 +116,16 @@ def translate_batch(
                 "is_successed": detected_output == expected_lang,
                 "duration": 0,
                 "input_size": len(text),
-                "output_size": len(cached)
+                "output_size": len(cached),
+                "size_difference": size_diff,
+                "is_approved": False
             }
         else:
             missing_texts.append(text)
             missing_indexes.append(i)
+            # Calculate 20% margin for the prompt
+            margin = int(len(text) * Config.SIZE_MARGIN_PRIMARY)
+            size_rules.append(f"'{text[:20]}...': original {len(text)} chars, target {len(text)}±{margin} chars")
 
     if missing_texts:
         try:
@@ -125,7 +135,8 @@ def translate_batch(
                 context,
                 Config.SOURCE_LANGUAGE,
                 Config.TARGET_LANGUAGE,
-                global_summary=global_summary
+                global_summary=global_summary,
+                size_rules=size_rules
             )
             
             # --- Primary Attempt ---
@@ -152,30 +163,34 @@ def translate_batch(
                 detected_output = _detector.detect(translated)
                 expected_lang = Config.TARGET_LANGUAGE.lower()[:2]
                 
-                # Check 10% size constraint and placeholders
                 input_len = len(original)
                 output_len = len(translated)
                 size_diff = abs(output_len - input_len) / max(input_len, 1)
                 
                 placeholders_valid = check_placeholders(original, translated)
                 
-                is_successed = detected_output == expected_lang and size_diff <= 0.1 and placeholders_valid
+                # Use Primary Margin (20%)
+                is_successed = detected_output == expected_lang and size_diff <= Config.SIZE_MARGIN_PRIMARY and placeholders_valid
 
-                # --- Retry individual mismatch, size violation or placeholder corruption with Fallback ---
+                # --- Retry individual mismatch or primary size violation with Fallback ---
+                is_fallback_approved = False
                 if not is_successed:
-                    if not placeholders_valid:
-                        print(f"⚠️ Placeholder corruption detected. Retrying with fallback...")
-                    elif detected_output != expected_lang:
-                        print(f"⚠️ Language mismatch with primary output. Retrying with fallback...")
-                    else:
-                        print(f"⚠️ Size constraint violated ({size_diff:.1%}). Retrying with fallback...")
+                    reason = ""
+                    if not placeholders_valid: reason = "Placeholder corruption"
+                    elif detected_output != expected_lang: reason = f"Language mismatch ({detected_output})"
+                    else: reason = f"Size constraint violated ({size_diff:.1%})"
                     
+                    print(f"⚠️ {reason}. Retrying with fallback...")
+                    
+                    # Calculate exact margin for fallback prompt (20% instruction but we allow 60%)
+                    margin_primary = int(input_len * Config.SIZE_MARGIN_PRIMARY)
                     single_prompt = prompts.build_batch_prompt(
                         [original],
                         context,
                         Config.SOURCE_LANGUAGE,
                         Config.TARGET_LANGUAGE,
-                        global_summary=global_summary
+                        global_summary=global_summary,
+                        size_rules=[f"'{original[:20]}...': target {input_len}±{margin_primary} chars"]
                     )
                     try:
                         raw_fb = ollama_chat(single_prompt, FallbackLLMClient, Config.FALLBACK_TRANSLATION_LLM)
@@ -186,37 +201,27 @@ def translate_batch(
                             output_len = len(translated)
                             size_diff = abs(output_len - input_len) / max(input_len, 1)
                             detected_output = _detector.detect(translated)
-                            is_successed = detected_output == expected_lang and size_diff <= 0.1
+                            # Fallback allows up to 60%
+                            if detected_output == expected_lang and size_diff <= Config.SIZE_MARGIN_FALLBACK and check_placeholders(original, translated):
+                                is_successed = True
+                                is_fallback_approved = True
                     except Exception as fb_err:
                         print(f"⚠️ Fallback retry failed: {fb_err}")
 
-                if not is_successed:
-                    print(f"⚠️ Keeping original due to persistent mismatch, size violation, or failure")
-                    results[idx] = {
-                        "translation": original,
-                        "detected_input": detected_input,
-                        "detected_output": detected_output,
-                        "is_successed": False,
-                        "duration": duration,
-                        "input_size": input_len,
-                        "output_size": input_len
-                    }
-                else:
-                    results[idx] = {
-                        "translation": translated,
-                        "detected_input": detected_input,
-                        "detected_output": detected_output,
-                        "is_successed": True,
-                        "duration": duration,
-                        "input_size": input_len,
-                        "output_size": output_len
-                    }
-                    if redis_client:
-                        redis_client.set(
-                            f"tr:{hash(original)}",
-                            translated,
-                            expire=86400
-                        )
+                results[idx] = {
+                    "translation": translated if is_successed else original,
+                    "detected_input": detected_input,
+                    "detected_output": detected_output,
+                    "is_successed": is_successed,
+                    "duration": duration,
+                    "input_size": input_len,
+                    "output_size": output_len if is_successed else input_len,
+                    "size_difference": size_diff,
+                    "is_approved": is_fallback_approved
+                }
+                
+                if is_successed and redis_client:
+                    redis_client.set(f"tr:{hash(original)}", translated, expire=86400)
 
         except Exception as e:
             print(f"⚠️ Batch translation failed completely: {e}")
@@ -229,18 +234,12 @@ def translate_batch(
                     "is_successed": False,
                     "duration": 0,
                     "input_size": len(orig),
-                    "output_size": len(orig)
+                    "output_size": len(orig),
+                    "size_difference": 0.0,
+                    "is_approved": False
                 }
 
-    return [r if r is not None else {
-        "translation": texts[i],
-        "detected_input": _detector.detect(texts[i]),
-        "detected_output": None,
-        "is_successed": False,
-        "duration": 0,
-        "input_size": len(texts[i]),
-        "output_size": len(texts[i])
-    } for i, r in enumerate(results)]
+    return [r for r in results if r is not None]
 
 def translate(
     text: str,

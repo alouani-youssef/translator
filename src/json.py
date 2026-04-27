@@ -134,6 +134,9 @@ def translate_file_content(filename: str, data: Any, state=None) -> Any:
             translated = res["translation"]
             set_value(data, path, translated)
             
+            if res.get("skip_db"):
+                continue
+
             batch_records.append({
                 "filename": filename,
                 "property": path,
@@ -145,11 +148,12 @@ def translate_file_content(filename: str, data: Any, state=None) -> Any:
                 "detected_output_lang": res.get("detected_output"),
                 "is_successed": res.get("is_successed", False),
                 "score": None,
-                "is_approved": False,
+                "is_approved": res.get("is_approved", False),
                 "notes": None,
                 "translation_time": res.get("duration"),
                 "input_size": res.get("input_size"),
-                "output_size": res.get("output_size")
+                "output_size": res.get("output_size"),
+                "size_difference": res.get("size_difference")
             })
         
         if batch_records:

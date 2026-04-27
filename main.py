@@ -6,6 +6,7 @@ from src.config import Config
 from src.file import translate_folder
 from src.db import init_db
 from src.queue_manager import db_queue
+from src.validation import validator
 from args import parse_args, apply_config, validate_input_path
 
 
@@ -19,6 +20,7 @@ def run() -> int:
         print("🗄️ Initializing database...")
         init_db()
         db_queue.start()
+        validator.start()
         print("🚀 Starting translation pipeline...")
         success_count = translate_folder()
         print("-" * 50)

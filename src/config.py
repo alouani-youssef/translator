@@ -25,6 +25,9 @@ class Config:
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/translator")
 
+    SIZE_MARGIN_PRIMARY: float = 0.2
+    SIZE_MARGIN_FALLBACK: float = 0.6
+
     
     DEFAULT_INDUSTRY: str = "Restaurant Management Software"
     DEFAULT_TONE: str = "professional, friendly, and persuasive"

@@ -90,7 +90,9 @@ def build_batch_prompt(
     context: Dict[str, Any],
     source_language: str,
     target_language: str,
-    global_summary: str = ""
+    global_summary: str = "",
+    size_rules: List[str] = None,
+    size_margin_pct: float = 0.2
 ) -> str:
     glossary = json.dumps(context.get("glossary", {}), ensure_ascii=False)
     entities = context.get("entities", [])
@@ -99,11 +101,41 @@ def build_batch_prompt(
     ]
     if global_summary:
         parts.append(f"Project: {global_summary}")
+    
+    rule_size = f"The length of each translation should be within {size_margin_pct:.0%} of the original text's length."
+    if size_rules:
+        rule_size = f"Strict size constraints (max {size_margin_pct:.0%} diff):\n" + "\n".join(size_rules)
+
     parts += [
         f"Tone: {context.get('tone', '')} | Audience: {context.get('audience', '')}",
         f"Glossary: {glossary}" if context.get("glossary") else "",
         f"Preserve entities: {entities}" if entities else "",
-        "Rules: Keep placeholders ({{name}}, %s, :var) and brand names unchanged. The length of each translation should be within 10% of the original text's length. Return ONLY a JSON array of translated strings, same order as input.",
+        f"Rules: Keep placeholders ({{{{name}}}}, %s, :var) and brand names unchanged. {rule_size} Return ONLY a JSON array of translated strings, same order as input.",
         f"\nTexts:\n{json.dumps(texts, ensure_ascii=False, indent=2)}",
     ]
     return "\n".join(p for p in parts if p)
+
+def build_validation_prompt(
+    source_text: str,
+    translated_text: str,
+    source_lang: str,
+    target_lang: str
+) -> str:
+    return f"""
+        You are an expert linguist and quality assurance specialist.
+        Verify if the following translation is accurate and maintains the original meaning and structure.
+        
+        Source ({source_lang}): {source_text}
+        Translation ({target_lang}): {translated_text}
+        
+        Rules:
+        - Check for meaning preservation.
+        - Check for structural integrity (placeholders, variables).
+        - Check for natural phrasing in the target language.
+        
+        Return ONLY a JSON object with:
+        {{
+          "is_valid": true/false,
+          "reason": "short explanation if invalid, else empty"
+        }}
+    """
