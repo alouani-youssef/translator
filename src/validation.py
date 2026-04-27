@@ -5,6 +5,27 @@ from ollama import Client
 from src.config import Config
 from src.db import get_pending_validations, update_approval_status
 from src import prompts
+import re
+
+def extract_json(raw: str) -> str:
+    raw = re.sub(r"```(?:json)?\s*", "", raw)
+    raw = re.sub(r"```", "", raw)
+    raw = raw.strip()
+
+    for start_char, end_char in [('{', '}'), ('[', ']')]:
+        start = raw.find(start_char)
+        if start == -1:
+            continue
+
+        end = raw.rfind(end_char)
+        if end != -1 and end > start:
+            candidate = raw[start:end + 1]
+            try:
+                json.loads(candidate)
+                return candidate
+            except json.JSONDecodeError:
+                pass
+    return raw
 
 class ValidationManager:
     def __init__(self, interval: int = 10):
@@ -35,7 +56,11 @@ class ValidationManager:
                 for record in pending:
                     is_valid, notes = self._validate_record(record)
                     update_approval_status(record["id"], is_valid, notes)
-                    print(f"🔍 Validated record {record['id']}: {'✅ Valid' if is_valid else '❌ Invalid'}")
+                    status_icon = "✅ Valid" if is_valid else "❌ Invalid"
+                    log_msg = f"🔍 Validated record {record['id']}: {status_icon}"
+                    if not is_valid:
+                        log_msg += f" - Reason: {notes}"
+                    print(log_msg)
 
             except Exception as e:
                 print(f"⚠️ Validation worker encountered an error: {e}")
@@ -55,10 +80,8 @@ class ValidationManager:
                 options={"temperature": 0.1},
             )
             content = response["message"]["content"].strip()
-            # Basic cleanup if LLM adds markdown
-            content = content.replace("```json", "").replace("```", "").strip()
-            
-            data = json.loads(content)
+            cleaned = extract_json(content)
+            data = json.loads(cleaned)
             return data.get("is_valid", False), data.get("reason", "")
         except Exception as e:
             # print(f"⚠️ Failed to validate record {record['id']}: {e}")

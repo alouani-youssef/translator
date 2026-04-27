@@ -36,6 +36,8 @@ def init_db():
                 is_successed        BOOLEAN     DEFAULT FALSE,
                 score               FLOAT       DEFAULT NULL,
                 is_approved         BOOLEAN     DEFAULT FALSE,
+                is_verified         BOOLEAN     DEFAULT FALSE,
+                verified_at         TIMESTAMPTZ DEFAULT NULL,
                 notes               TEXT        DEFAULT NULL,
                 translation_time    FLOAT       DEFAULT NULL,
                 input_size          INTEGER     DEFAULT NULL,
@@ -46,11 +48,19 @@ def init_db():
                 CONSTRAINT idx_translations_unique UNIQUE (filename, property, language, translation_language)
             );
 
-            -- Ensure constraint exists if table was created without it
+            -- Ensure constraints and new columns exist if table was created without them
             DO $$ 
             BEGIN 
                 IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'idx_translations_unique') THEN
                     ALTER TABLE translation_operations ADD CONSTRAINT idx_translations_unique UNIQUE (filename, property, language, translation_language);
+                END IF;
+                
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='translation_operations' AND column_name='is_verified') THEN
+                    ALTER TABLE translation_operations ADD COLUMN is_verified BOOLEAN DEFAULT FALSE;
+                END IF;
+
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='translation_operations' AND column_name='verified_at') THEN
+                    ALTER TABLE translation_operations ADD COLUMN verified_at TIMESTAMPTZ DEFAULT NULL;
                 END IF;
             END $$;
 
@@ -87,6 +97,8 @@ def upsert_translation(
     input_size: int = None,
     output_size: int = None,
     size_difference: float = None,
+    is_verified: bool = False,
+    verified_at = None,
 ):
     """
     Insert or update a translation record.
@@ -95,12 +107,12 @@ def upsert_translation(
         cur.execute("""
             INSERT INTO translation_operations
                 (filename, property, value, language, translation, translation_language, 
-                 detected_input_lang, detected_output_lang, is_successed, score, is_approved, notes, 
-                 translation_time, input_size, output_size, size_difference)
+                 detected_input_lang, detected_output_lang, is_successed, score, is_approved, 
+                 is_verified, verified_at, notes, translation_time, input_size, output_size, size_difference)
             VALUES
                 (%(filename)s, %(property)s, %(value)s, %(language)s, %(translation)s,
                  %(translation_language)s, %(detected_input_lang)s, %(detected_output_lang)s, 
-                 %(is_successed)s, %(score)s, %(is_approved)s, %(notes)s, 
+                 %(is_successed)s, %(score)s, %(is_approved)s, %(is_verified)s, %(verified_at)s, %(notes)s, 
                  %(translation_time)s, %(input_size)s, %(output_size)s, %(size_difference)s)
             ON CONFLICT (filename, property, language, translation_language)
             DO UPDATE SET
@@ -111,6 +123,8 @@ def upsert_translation(
                 is_successed         = EXCLUDED.is_successed,
                 score                = EXCLUDED.score,
                 is_approved          = EXCLUDED.is_approved,
+                is_verified          = EXCLUDED.is_verified,
+                verified_at          = EXCLUDED.verified_at,
                 notes                = EXCLUDED.notes,
                 translation_time     = EXCLUDED.translation_time,
                 input_size           = EXCLUDED.input_size,
@@ -128,6 +142,8 @@ def upsert_translation(
             "is_successed": is_successed,
             "score": score,
             "is_approved": is_approved,
+            "is_verified": is_verified,
+            "verified_at": verified_at,
             "notes": notes,
             "translation_time": translation_time,
             "input_size": input_size,
@@ -149,12 +165,12 @@ def bulk_upsert_translations(records: list[dict]):
             """
             INSERT INTO translation_operations
                 (filename, property, value, language, translation, translation_language, 
-                 detected_input_lang, detected_output_lang, is_successed, score, is_approved, notes, 
-                 translation_time, input_size, output_size, size_difference)
+                 detected_input_lang, detected_output_lang, is_successed, score, is_approved, 
+                 is_verified, verified_at, notes, translation_time, input_size, output_size, size_difference)
             VALUES
                 (%(filename)s, %(property)s, %(value)s, %(language)s, %(translation)s,
                  %(translation_language)s, %(detected_input_lang)s, %(detected_output_lang)s, 
-                 %(is_successed)s, %(score)s, %(is_approved)s, %(notes)s, 
+                 %(is_successed)s, %(score)s, %(is_approved)s, %(is_verified)s, %(verified_at)s, %(notes)s, 
                  %(translation_time)s, %(input_size)s, %(output_size)s, %(size_difference)s)
             ON CONFLICT (filename, property, language, translation_language)
             DO UPDATE SET
@@ -165,6 +181,8 @@ def bulk_upsert_translations(records: list[dict]):
                 is_successed         = EXCLUDED.is_successed,
                 score                = EXCLUDED.score,
                 is_approved          = EXCLUDED.is_approved,
+                is_verified          = EXCLUDED.is_verified,
+                verified_at          = EXCLUDED.verified_at,
                 notes                = EXCLUDED.notes,
                 translation_time     = EXCLUDED.translation_time,
                 input_size           = EXCLUDED.input_size,
@@ -177,12 +195,12 @@ def bulk_upsert_translations(records: list[dict]):
 
 
 def get_pending_validations(limit: int = 50):
-    """Get records that haven't been approved or rejected yet."""
+    """Get records that haven't been verified yet."""
     with get_cursor() as cur:
         cur.execute("""
             SELECT id, value, translation, language, translation_language 
             FROM translation_operations 
-            WHERE is_approved IS FALSE 
+            WHERE is_verified IS FALSE 
             ORDER BY created_at ASC 
             LIMIT %s;
         """, (limit,))
@@ -190,10 +208,13 @@ def get_pending_validations(limit: int = 50):
 
 
 def update_approval_status(record_id: int, is_approved: bool, notes: str = None):
-    """Update the approval status of a record."""
+    """Update the approval and verification status of a record."""
     with get_cursor() as cur:
         cur.execute("""
             UPDATE translation_operations 
-            SET is_approved = %s, notes = COALESCE(%s, notes) 
+            SET is_approved = %s, 
+                is_verified = TRUE, 
+                verified_at = NOW(),
+                notes = COALESCE(%s, notes) 
             WHERE id = %s;
         """, (is_approved, notes, record_id))

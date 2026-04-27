@@ -136,6 +136,6 @@ def build_validation_prompt(
         Return ONLY a JSON object with:
         {{
           "is_valid": true/false,
-          "reason": "short explanation if invalid, else empty"
+          "reason": "MANDATORY detailed explanation if is_valid is false, else empty string"
         }}
     """
