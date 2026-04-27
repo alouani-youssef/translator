@@ -71,7 +71,9 @@ def translate_batch(
     texts: List[str],
     context: Dict[str, Any],
     redis_client=None,
-    global_summary: str = ""
+    global_summary: str = "",
+    source_language: Optional[str] = None,
+    target_language: Optional[str] = None
 ) -> List[Dict[str, Any]]:
 
     if not texts:
@@ -84,8 +86,11 @@ def translate_batch(
     missing_indexes: List[int] = []
     size_rules: List[str] = []
 
+    source_lang = source_language or Config.SOURCE_LANGUAGE
+    target_lang = target_language or Config.TARGET_LANGUAGE
+
     try:
-        approved_db_translations = get_approved_translations(texts, Config.SOURCE_LANGUAGE, Config.TARGET_LANGUAGE)
+        approved_db_translations = get_approved_translations(texts, source_lang, target_lang)
     except Exception as e:
         print(f"⚠️ Failed to fetch approved translations from DB: {e}")
         approved_db_translations = {}
@@ -117,7 +122,7 @@ def translate_batch(
                 cached = cached.decode("utf-8")
             
             detected_output = _detector.detect(cached)
-            expected_lang = Config.TARGET_LANGUAGE.lower()[:2]
+            expected_lang = target_lang.lower()[:2]
             size_diff = abs(len(cached) - len(text)) / max(len(text), 1)
             
             results[i] = {
@@ -134,7 +139,7 @@ def translate_batch(
         elif text in approved_db_translations:
             db_trans = approved_db_translations[text]
             detected_output = _detector.detect(db_trans)
-            expected_lang = Config.TARGET_LANGUAGE.lower()[:2]
+            expected_lang = target_lang.lower()[:2]
             size_diff = abs(len(db_trans) - len(text)) / max(len(text), 1)
             
             results[i] = {
@@ -164,8 +169,8 @@ def translate_batch(
             prompt = prompts.build_batch_prompt(
                 missing_texts,
                 context,
-                Config.SOURCE_LANGUAGE,
-                Config.TARGET_LANGUAGE,
+                source_lang,
+                target_lang,
                 global_summary=global_summary,
                 size_rules=size_rules,
                 size_margin_pct=Config.SIZE_MARGIN_PRIMARY
@@ -219,8 +224,8 @@ def translate_batch(
                     single_prompt = prompts.build_batch_prompt(
                         [original],
                         context,
-                        Config.SOURCE_LANGUAGE,
-                        Config.TARGET_LANGUAGE,
+                        source_lang,
+                        target_lang,
                         global_summary=global_summary,
                         size_rules=[f"'{original[:20]}...': target {input_len}±{margin_primary} chars"],
                         size_margin_pct=Config.SIZE_MARGIN_FALLBACK

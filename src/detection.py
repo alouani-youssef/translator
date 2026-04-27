@@ -19,3 +19,18 @@ class LanguageDetectorService:
             return None
         
         return language.iso_code_639_1.name.lower()
+
+    def detect_with_confidence(self, text: str) -> list[dict[str, any]]:
+        if not text or not text.strip():
+            return []
+
+        confidence_values = self.detector.compute_language_confidence_values(text)
+        
+        results = []
+        for cv in confidence_values[:3]:
+            results.append({
+                "languageCode": cv.language.iso_code_639_1.name.lower(),
+                "confidence": cv.value
+            })
+        
+        return results
