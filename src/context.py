@@ -92,9 +92,9 @@ def extract_json(raw: str) -> str:
 
 
 
-def generate_summary(filename: str, content: str) -> str:
+def generate_summary(filename: str, content: str, target_language: str = "English") -> str:
     try:
-        prompt = prompts.build_summary_prompt(filename, content)
+        prompt = prompts.build_summary_prompt(filename, content, target_language=target_language)
         response = SummaryLLMClient.chat(
             model=Config.SUMMARIZE_LLM,
             messages=[{"role": "user", "content": prompt}],
@@ -109,7 +109,7 @@ def generate_summary(filename: str, content: str) -> str:
 
 
 
-def generate_global_context(files: List[Dict[str, Any]]) -> str:
+def generate_global_context(files: List[Dict[str, Any]], target_language: str = "English") -> str:
     """
     Generate a global context across multiple files for SEO / translation pipeline.
     
@@ -138,7 +138,7 @@ def generate_global_context(files: List[Dict[str, Any]]) -> str:
                 "content": content
             })
 
-        prompt = prompts.build_global_context_prompt(compact_files)
+        prompt = prompts.build_global_context_prompt(compact_files, target_language=target_language)
 
         response = SummaryLLMClient.chat(
             model=Config.SUMMARIZE_LLM,
@@ -164,10 +164,11 @@ def generate_global_context(files: List[Dict[str, Any]]) -> str:
 def enrich_context_with_llm(
     filename: str,
     content: str,
-    base_context: Dict[str, Any]
+    base_context: Dict[str, Any],
+    target_language: str = "English"
 ) -> Dict[str, Any]:
     try:
-        prompt = prompts.build_context_prompt(filename, content, base_context)
+        prompt = prompts.build_context_prompt(filename, content, base_context, target_language=target_language)
 
         response = SummaryLLMClient.chat(
             model=Config.SUMMARIZE_LLM,
@@ -195,6 +196,7 @@ def build_context(
     filename: str,
     content: str,
     properties: Optional[Dict[str, Any]] = None,
+    target_language: str = "English"
 ) -> Dict[str, Any]:
     properties = properties or {}
 
@@ -213,8 +215,8 @@ def build_context(
     }
     summary = properties.get("summary")
     if not summary:
-        summary = generate_summary(filename, content)
-    enriched = enrich_context_with_llm(filename, content, base_context)
+        summary = generate_summary(filename, content, target_language=target_language)
+    enriched = enrich_context_with_llm(filename, content, base_context, target_language=target_language)
 
     final_context: Dict[str, Any] = {
         **base_context,

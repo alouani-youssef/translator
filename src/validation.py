@@ -86,7 +86,6 @@ class ValidationManager:
             data = json.loads(cleaned)
             return data.get("is_valid", False), data.get("reason", "")
         except Exception as e:
-            # print(f"⚠️ Failed to validate record {record['id']}: {e}")
             return False, f"Validation failed: {e}"
 
 # Global instance
