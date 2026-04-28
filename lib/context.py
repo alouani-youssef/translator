@@ -3,8 +3,8 @@ import json
 import hashlib
 from ollama import Client
 from typing import Dict, Any, List, Optional
-from src.config import Config
-from src import prompts
+from config import Config
+from lib import prompts
 SummaryLLMClient = Client(host=Config.SUMMARIZE_LLM_URL)
 
 def infer_content_type(filename: str, path: str = "") -> str:

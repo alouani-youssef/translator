@@ -1,9 +1,9 @@
 import sys
-from src.config import Config
-from src.file import translate_folder
-from src.db import init_db
-from src.queue_manager import db_queue
-from src.validation import validator
+from config import Config
+from lib.file import translate_folder
+from lib.db import init_db
+from lib.queue_manager import db_queue
+from lib.validation import validator
 from args import parse_args, apply_config, validate_input_path
 
 

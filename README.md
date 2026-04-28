@@ -108,7 +108,7 @@ Output JSON Files
 # 📦 Project Structure
 
 ```
-src/
+lib/
 │
 ├── main.py
 ├── config.py

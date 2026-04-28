@@ -3,9 +3,9 @@ from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from src.config import Config
-from src.json import translate_file_content
-from src.state import StateManager
+from config import Config
+from lib.json import translate_file_content
+from lib.state import StateManager
 
 
 state =  StateManager(url=Config.REDIS_URL)

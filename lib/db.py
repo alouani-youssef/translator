@@ -1,7 +1,7 @@
 import psycopg2
 import psycopg2.extras
 from contextlib import contextmanager
-from src.config import Config
+from config import Config
 
 
 def get_connection():

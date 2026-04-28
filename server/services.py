@@ -1,6 +1,6 @@
-from src.translator import translate_batch
-from src.detection import LanguageDetectorService
-from src.config import Config
+from lib.translator import translate_batch
+from lib.detection import LanguageDetectorService
+from config import Config
 from typing import List, Dict, Any, Optional
 
 class TranslationService:

@@ -3,10 +3,10 @@ import re
 import time
 from ollama import Client
 from typing import List, Dict, Any, Optional
-from src.config import Config
-from src import prompts
-from src.detection import LanguageDetectorService
-from src.db import get_approved_translations
+from config import Config
+from lib import prompts
+from lib.detection import LanguageDetectorService
+from lib.db import get_approved_translations
 
 TranslationLLMClient = Client(host=Config.TRANSLATION_LLM_URL)
 FallbackLLMClient = Client(host=Config.FALLBACK_TRANSLATION_LLM_URL)
