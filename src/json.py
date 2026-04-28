@@ -108,6 +108,7 @@ def translate_file_content(filename: str, data: Any, state=None) -> Any:
         context = build_context(
             filename,
             content_str,
+            target_language=Config.TARGET_LANGUAGE
         )
         if state:
             state.set(context_cache_key, json.dumps(context), expire=86400)

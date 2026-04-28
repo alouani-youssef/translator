@@ -11,3 +11,6 @@ langchain
 langchain-chroma
 langchain-ollama
 psycopg2-binary
+flask
+flasgger
+pydantic

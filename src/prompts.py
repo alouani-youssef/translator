@@ -1,119 +1,212 @@
 import json
 from typing import List, Dict, Any
 
-def build_summary_prompt(filename: str, content: str) -> str:
+
+
+def build_summary_prompt(
+    filename: str,
+    content: str,
+    target_language: str = "English"
+) -> str:
     return f"""
-    You are an expert content strategist.
-    Summarize the following file, in a single pharagraph, because it will be used as a context for translation:
-    File name: {filename}
-    Content:
-    \"\"\"
-    {content}
-    \"\"\"
-    Rules:
-    - Plain text only
-    - No JSON
-    - No explanation
-    - Keep it short and clear
+You are a content analyst.
+
+Task:
+Summarize the file for translation context.
+
+Constraints:
+- Output language: {target_language}
+- One short paragraph
+- No explanations
+- No formatting
+
+Input:
+File: {filename}
+Content:
+\"\"\"
+{content[:3000]}
+\"\"\"
 """
+
+
 
 def build_context_prompt(
     filename: str,
     content: str,
-    base_context: Dict[str, Any]
+    base_context: Dict[str, Any],
+    target_language: str = "English"
 ) -> str:
     return f"""
-You are an expert content strategist and SEO analyst for a Restaurant Management SaaS.
+You are a structured data extractor.
 
-Analyze the following file and generate structured context.
+Task:
+Extract translation context.
 
-File name: {filename}
-Base context: {json.dumps(base_context, ensure_ascii=False)}
+Output language for VALUES: {target_language}
 
-Content (first 2000 chars):
-\"\"\"
-{content[:2000]}
-\"\"\"
-
-Return ONLY a raw JSON object with these exact keys:
-
+JSON SCHEMA:
 {{
-  "industry": "string describing the industry",
-  "tone": "string describing the writing tone",
-  "audience": "string describing the target audience",
-  "keywords": ["list", "of", "important", "keywords"],
-  "entities": ["list", "of", "important", "brand", "or", "product", "names"],
+  "industry": "string",
+  "tone": "string",
+  "audience": "string",
+  "keywords": ["string"],
+  "entities": ["string"],
   "glossary": {{"source_term": "target_term"}}
 }}
 
 Rules:
-- No summary here
-- Be concise
-- No prose outside JSON
+- Output ONLY valid JSON
+- No extra text
+- All values MUST be in {target_language}
+- Keep fields short and precise
+
+Example:
+{{
+  "industry": "Restaurant SaaS",
+  "tone": "Professional and friendly",
+  "audience": "Restaurant owners",
+  "keywords": ["POS", "orders"],
+  "entities": ["Stripe"],
+  "glossary": {{"order": "commande"}}
+}}
+
+Input:
+File: {filename}
+Base context: {json.dumps(base_context, ensure_ascii=False)}
+
+Content:
+\"\"\"
+{content[:2000]}
+\"\"\"
 """
 
-def build_global_context_prompt(compact_files: List[Dict[str, Any]]) -> str:
+
+
+def build_global_context_prompt(
+    compact_files: List[Dict[str, Any]],
+    target_language: str = "English"
+) -> str:
     return f"""
-You are an expert global SEO and content strategist.
+You are a structured aggregator.
 
-You are analyzing a full application containing multiple content files.
+Task:
+Merge multiple file contexts into ONE global context.
 
-Your task is to generate a SINGLE unified global context that represents the entire system.
+Output language: {target_language}
 
-Files:
-{json.dumps(compact_files, ensure_ascii=False, indent=2)}
-
-Return ONLY a raw JSON object with this structure:
-
+JSON SCHEMA:
 {{
-  "industry": "string describing the overall industry",
-  "tone": "global tone of all content",
-  "audience": "primary target audience",
-  "keywords": ["most important global keywords"],
-  "entities": ["brands", "products", "services mentioned across files"],
-  "glossary": {{
-    "source_term": "standardized_term"
-  }},
-  "summary": "1 paragraph describing the entire system"
+  "industry": "string",
+  "tone": "string",
+  "audience": "string",
+  "keywords": ["string"],
+  "entities": ["string"],
+  "glossary": {{"source_term": "target_term"}},
+  "summary": "string"
 }}
 
 Rules:
-- Be consistent across files
-- Merge repeated concepts
-- Avoid duplication
-- No explanations
 - Output ONLY valid JSON
+- Merge duplicates
+- Keep consistency
+- All values in {target_language}
+
+Input:
+{json.dumps(compact_files, ensure_ascii=False)}
 """
 
-def build_batch_prompt(
+
+def build_translation_draft_prompt(
     texts: List[str],
     context: Dict[str, Any],
     source_language: str,
-    target_language: str,
-    global_summary: str = "",
-    size_rules: List[str] = None,
-    size_margin_pct: float = 0.2
+    target_language: str
 ) -> str:
     glossary = json.dumps(context.get("glossary", {}), ensure_ascii=False)
-    entities = context.get("entities", [])
-    parts = [
-        f"Translate from {source_language} to {target_language}.",
-    ]
-    if global_summary:
-        parts.append(f"Project: {global_summary}")
-    
-    rule_size = f"The length of each translation should be within {size_margin_pct:.0%} of the original text's length."
-    if size_rules:
-        rule_size = f"Strict size constraints (max {size_margin_pct:.0%} diff):\n" + "\n".join(size_rules)
 
-    parts += [
-        f"Tone: {context.get('tone', '')} | Audience: {context.get('audience', '')} Be (More flowing, emphasizes the lack of integration)",
-        f"Glossary: {glossary}" if context.get("glossary") else "",
-        f"Preserve entities: {entities}" if entities else "",
-        f"Rules: Keep placeholders ({{{{name}}}}, %s, :var) and brand names unchanged. {rule_size} Return ONLY a JSON array of translated strings, same order as input.",
-        f"\nTexts:\n{json.dumps(texts, ensure_ascii=False, indent=2)}",
-    ]
-    return "\n".join(p for p in parts if p)
+    return f"""
+You are a professional translation engine.
+
+Task:
+Translate the following list of strings from {source_language} to {target_language}.
+
+Context:
+- Industry: {context.get('industry', 'General')}
+- Summary: {context.get('summary', '')}
+
+Constraint Hierarchy (Priority 1 is most important):
+1. MEANING: Preserve the original meaning exactly. No omissions or additions.
+2. TECHNICAL: Preserve all placeholders ({{{{name}}}}, %s, :var, {{var}}), numbers, and brand names.
+3. GLOSSARY: Use the provided glossary terms strictly.
+
+Glossary:
+{glossary}
+
+Output:
+Return ONLY a raw JSON array of translated strings.
+
+Example:
+["translated_text_1", "translated_text_2"]
+
+Texts:
+{json.dumps(texts, ensure_ascii=False)}
+"""
+
+
+
+def build_translation_refine_prompt(
+    draft_translations: List[str],
+    context: Dict[str, Any],
+    target_language: str
+) -> str:
+    tone = context.get("tone", "")
+    audience = context.get("audience", "")
+
+    return f"""
+You are a localization expert and senior editor in {target_language}.
+
+Input: 
+You are provided with a DRAFT translation in {target_language} that needs refinement for natural flow and professional impact.
+
+Task:
+Improve the fluency and style of the draft translations.
+
+Constraint Hierarchy (Priority 1 is most important):
+1. PRESERVATION: DO NOT change placeholders ({{{{name}}}}, %s, :var, {{var}}), numbers, or brand names.
+2. MEANING: Keep the meaning unchanged. The translation must remain faithful to the original intent. DO NOT sacrifice accuracy for the sake of fluency or style.
+3. STYLE: Adapt the text to the specified tone and audience to sound like a native professional.
+
+Style Specifications:
+- Tone: {tone}
+- Audience: {audience}
+
+Rules:
+- Avoid literal translation, but ensure the core message remains identical to the source.
+- Ensure natural phrasing in {target_language}.
+- If the draft is already excellent, keep it as is.
+
+Output:
+Return ONLY a raw JSON array of refined strings.
+
+Input (Draft Translations):
+{json.dumps(draft_translations, ensure_ascii=False)}
+"""
+
+
+def build_json_repair_prompt(raw_output: str) -> str:
+    return f"""
+You are a JSON repair tool.
+
+Fix the output to be valid JSON.
+
+Rules:
+- Return ONLY valid JSON
+- No explanation
+- Keep content unchanged
+
+Input:
+{raw_output}
+"""
 
 def build_validation_prompt(
     source_text: str,
@@ -122,20 +215,95 @@ def build_validation_prompt(
     target_lang: str
 ) -> str:
     return f"""
-        You are an expert linguist and quality assurance specialist.
-        Verify if the following translation is accurate and maintains the original meaning and structure.
-        
-        Source ({source_lang}): {source_text}
-        Translation ({target_lang}): {translated_text}
-        
-        Rules:
-        - Check for meaning preservation.
-        - Check for structural integrity (placeholders, variables).
-        - Check for natural phrasing in the target language.
-        - Be (More flowing, emphasizes the lack of integration) we are not looking for a literal translation but a translation that maintains the same meaning and structure.
-        Return ONLY a JSON object with:
-        {{
-          "is_valid": true/false,
-          "reason": "MANDATORY detailed explanation if is_valid is false, else empty string"
-        }}
-    """
+You are a translation QA system.
+
+Task:
+Validate if the translation from {source_lang} to {target_lang} is correct, natural, and preserves all technical elements.
+
+Input:
+- Source ({source_lang}): "{source_text}"
+- Translation ({target_lang}): "{translated_text}"
+
+Criteria for is_valid=true:
+1. The meaning is identical to the source.
+2. All placeholders ({{{{name}}}}, %s, :var, {{var}}) are exactly the same as in the source.
+3. No hallucinated content.
+4. Fluency is natural for the target audience.
+
+Output:
+Return ONLY a valid JSON object. DO NOT include any explanation or extra text.
+
+JSON Schema:
+{{
+  "is_valid": boolean,
+  "error_type": "meaning|fluency|structure|placeholder|none",
+  "reason": "short explanation in English"
+}}
+"""
+
+
+
+def build_fix_translation_prompt(
+    source_text: str,
+    bad_translation: str,
+    target_language: str
+) -> str:
+    return f"""
+You are a senior translation editor specialized in {target_language}.
+
+Task:
+Fix the following translation from the source text. 
+
+Source (Original):
+"{source_text}"
+
+Current Bad Translation ({target_language}):
+"{bad_translation}"
+
+Examples of correct behavior:
+Example 1:
+Source: "Settings"
+Bad Translation: "Config"
+Corrected Translation: "الإعدادات"
+
+Example 2:
+Source: "From the Inside Out"
+Bad Translation: "Hallucinated interpretation"
+Corrected Translation: "من الداخل إلى الخارج"
+
+Instructions:
+- Fix grammatical errors, fluency issues, or placeholder corruption.
+- DO NOT translate the source back to English.
+- DO NOT provide any explanation, commentary, or introduction.
+- Return ONLY the corrected translation in {target_language}.
+
+Corrected Translation:
+"""
+
+def build_batch_metadata(
+
+    context: Dict[str, Any],
+
+    size_margin_pct: float = 0.2,
+
+) -> Dict[str, Any]:
+
+    return {
+
+        "tone": context.get("tone", ""),
+
+        "audience": context.get("audience", ""),
+
+        "glossary": context.get("glossary", {}),
+
+        "entities": context.get("entities", []),
+
+        "constraints": {
+
+            "preserve_placeholders": True,
+
+            "size_margin_pct": size_margin_pct,
+
+        }
+
+    }

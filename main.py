@@ -1,7 +1,4 @@
 import sys
-import argparse
-from pathlib import Path
-
 from src.config import Config
 from src.file import translate_folder
 from src.db import init_db

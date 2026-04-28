@@ -7,6 +7,7 @@ from src.db import get_pending_validations, update_approval_status
 from src import prompts
 import re
 
+
 def extract_json(raw: str) -> str:
     raw = re.sub(r"```(?:json)?\s*", "", raw)
     raw = re.sub(r"```", "", raw)
@@ -33,6 +34,7 @@ class ValidationManager:
         self._stop_event = threading.Event()
         self._worker_thread = None
         self._client = Client(host=Config.VALIDATION_LLM_URL)
+        print(f"Validation Manager initialized From Server : {Config.VALIDATION_LLM_URL}")
 
     def start(self):
         if self._worker_thread is None:
@@ -84,7 +86,6 @@ class ValidationManager:
             data = json.loads(cleaned)
             return data.get("is_valid", False), data.get("reason", "")
         except Exception as e:
-            # print(f"⚠️ Failed to validate record {record['id']}: {e}")
             return False, f"Validation failed: {e}"
 
 # Global instance
