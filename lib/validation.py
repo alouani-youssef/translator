@@ -2,9 +2,9 @@ import time
 import threading
 import json
 from ollama import Client
-from src.config import Config
-from src.db import get_pending_validations, update_approval_status
-from src import prompts
+from config import Config
+from lib.db import get_pending_validations, update_approval_status
+from lib import prompts
 import re
 
 

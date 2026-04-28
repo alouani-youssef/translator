@@ -2,7 +2,7 @@ import sys
 import argparse
 from pathlib import Path
 
-from src.config import Config
+from config import Config
 
 
 

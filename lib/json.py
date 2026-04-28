@@ -2,10 +2,10 @@ import json
 import re
 import hashlib
 from typing import Any, Dict, List, Tuple
-from src.translator import translate_batch
-from src.context import build_context, generate_summary
-from src.queue_manager import db_queue
-from src.config import Config
+from lib.translator import translate_batch
+from lib.context import build_context, generate_summary
+from lib.queue_manager import db_queue
+from config import Config
 
 
 _DATE_PATTERNS = [

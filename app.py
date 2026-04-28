@@ -1,7 +1,7 @@
 from flask import Flask
 from flasgger import Swagger
 from server.routes import api_bp
-from src.config import Config
+from config import Config
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -13,8 +13,8 @@ def create_app():
         "headers": [],
         "specs": [
             {
-                "endpoint": 'apispec_1',
-                "route": '/apispec_1.json',
+                "endpoint": 'translator',
+                "route": '/translator/v1/apispec',
                 "rule_filter": lambda rule: True,  
                 "model_filter": lambda tag: True,  
             }
