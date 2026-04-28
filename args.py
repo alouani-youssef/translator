@@ -1,10 +1,6 @@
-import sys
 import argparse
 from pathlib import Path
-
 from config import Config
-
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
