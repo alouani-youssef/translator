@@ -57,10 +57,11 @@ def translate_file(input_path: Path, output_path: Path) -> bool:
         translated = translate_file_content(
             input_path.name,
             data,
-            state=state
+            state=state,
+            output_path=output_path
         )
 
-        return save_json(output_path, translated)
+        return True # The file is already saved incrementally
 
     except Exception as e:
         print(f"❌ Failed {input_path.name}: {e}")
