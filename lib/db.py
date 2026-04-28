@@ -42,6 +42,8 @@ def init_db():
                 input_size          INTEGER     DEFAULT NULL,
                 output_size         INTEGER     DEFAULT NULL,
                 size_difference     FLOAT       DEFAULT NULL,
+                is_duplicated       BOOLEAN     DEFAULT FALSE,
+                duplication_count   INTEGER     DEFAULT 1,
                 created_at          TIMESTAMPTZ DEFAULT NOW(),
                 updated_at          TIMESTAMPTZ DEFAULT NOW(),
                 CONSTRAINT idx_translations_unique UNIQUE (filename, property, language, translation_language)
@@ -60,6 +62,14 @@ def init_db():
 
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='translation_operations' AND column_name='verified_at') THEN
                     ALTER TABLE translation_operations ADD COLUMN verified_at TIMESTAMPTZ DEFAULT NULL;
+                END IF;
+
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='translation_operations' AND column_name='is_duplicated') THEN
+                    ALTER TABLE translation_operations ADD COLUMN is_duplicated BOOLEAN DEFAULT FALSE;
+                END IF;
+
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='translation_operations' AND column_name='duplication_count') THEN
+                    ALTER TABLE translation_operations ADD COLUMN duplication_count INTEGER DEFAULT 1;
                 END IF;
             END $$;
 
@@ -111,18 +121,22 @@ def upsert_translation(
     size_difference: float = None,
     is_verified: bool = False,
     verified_at = None,
+    is_duplicated: bool = False,
+    duplication_count: int = 1,
 ):
     with get_cursor() as cur:
         cur.execute("""
             INSERT INTO translation_operations
                 (filename, property, value, language, translation, translation_language, 
                  detected_input_lang, detected_output_lang, is_successed, score, is_approved, 
-                 is_verified, verified_at, notes, translation_time, input_size, output_size, size_difference)
+                 is_verified, verified_at, notes, translation_time, input_size, output_size, 
+                 size_difference, is_duplicated, duplication_count)
             VALUES
                 (%(filename)s, %(property)s, %(value)s, %(language)s, %(translation)s,
                  %(translation_language)s, %(detected_input_lang)s, %(detected_output_lang)s, 
                  %(is_successed)s, %(score)s, %(is_approved)s, %(is_verified)s, %(verified_at)s, %(notes)s, 
-                 %(translation_time)s, %(input_size)s, %(output_size)s, %(size_difference)s)
+                 %(translation_time)s, %(input_size)s, %(output_size)s, %(size_difference)s,
+                 %(is_duplicated)s, %(duplication_count)s)
             ON CONFLICT (filename, property, language, translation_language)
             DO UPDATE SET
                 value                = EXCLUDED.value,
@@ -163,6 +177,8 @@ def upsert_translation(
             "input_size": input_size,
             "output_size": output_size,
             "size_difference": size_difference,
+            "is_duplicated": is_duplicated,
+            "duplication_count": duplication_count,
         })
 
 
@@ -177,12 +193,14 @@ def bulk_upsert_translations(records: list[dict]):
             INSERT INTO translation_operations
                 (filename, property, value, language, translation, translation_language, 
                  detected_input_lang, detected_output_lang, is_successed, score, is_approved, 
-                 is_verified, verified_at, notes, translation_time, input_size, output_size, size_difference)
+                 is_verified, verified_at, notes, translation_time, input_size, output_size, 
+                 size_difference, is_duplicated, duplication_count)
             VALUES
                 (%(filename)s, %(property)s, %(value)s, %(language)s, %(translation)s,
                  %(translation_language)s, %(detected_input_lang)s, %(detected_output_lang)s, 
                  %(is_successed)s, %(score)s, %(is_approved)s, %(is_verified)s, %(verified_at)s, %(notes)s, 
-                 %(translation_time)s, %(input_size)s, %(output_size)s, %(size_difference)s)
+                 %(translation_time)s, %(input_size)s, %(output_size)s, %(size_difference)s,
+                 %(is_duplicated)s, %(duplication_count)s)
             ON CONFLICT (filename, property, language, translation_language)
             DO UPDATE SET
                 value                = EXCLUDED.value,
@@ -198,7 +216,9 @@ def bulk_upsert_translations(records: list[dict]):
                 translation_time     = EXCLUDED.translation_time,
                 input_size           = EXCLUDED.input_size,
                 output_size          = EXCLUDED.output_size,
-                size_difference      = EXCLUDED.size_difference;
+                size_difference      = EXCLUDED.size_difference,
+                is_duplicated        = EXCLUDED.is_duplicated,
+                duplication_count    = EXCLUDED.duplication_count;
             """,
             records,
             page_size=100,
@@ -255,3 +275,18 @@ def get_approved_translations(texts: list[str], source_lang: str, target_lang: s
               AND is_approved = TRUE
         """, (texts, source_lang, target_lang))
         return {row['value']: row['translation'] for row in cur.fetchall()}
+
+
+def get_translation_metadata(value: str, language: str, translation_language: str) -> dict:
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT COUNT(*) as count, 
+                   EXISTS(SELECT 1 FROM translation_operations WHERE value = %s AND language = %s AND translation_language = %s) as exists
+            FROM translation_operations 
+            WHERE value = %s AND language = %s AND translation_language = %s
+        """, (value, language, translation_language, value, language, translation_language))
+        row = cur.fetchone()
+        return {
+            "is_duplicated": row['count'] > 0,
+            "duplication_count": row['count'] + 1 # We are about to add one
+        }

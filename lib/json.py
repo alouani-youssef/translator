@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Tuple
 from lib.translator import translate_batch
 from lib.context import build_context, generate_summary
 from lib.queue_manager import db_queue
+from lib.db import get_translation_metadata
 from config import Config
 
 
@@ -59,6 +60,8 @@ def extract_strings(data: Any, path="") -> List[Tuple[str, str]]:
 
     elif isinstance(data, dict):
         for k, v in data.items():
+            if k.lower() in ("icon", "icons"):
+                continue
             results.extend(extract_strings(v, f"{path}.{k}" if path else k))
 
     elif isinstance(data, list):
@@ -89,7 +92,7 @@ def set_value(data: Any, path: str, value: str):
 
 
 
-def translate_file_content(filename: str, data: Any, state=None) -> Any:
+def translate_file_content(filename: str, data: Any, state=None, output_path=None) -> Any:
 
     content_str = json.dumps(data, ensure_ascii=False)
 
@@ -114,7 +117,6 @@ def translate_file_content(filename: str, data: Any, state=None) -> Any:
             state.set(context_cache_key, json.dumps(context), expire=86400)
 
 
-    # --- global summary (set externally, read-only here) ---
     global_summary = state.get("global_summary") if state else ""
     if isinstance(global_summary, bytes):
         global_summary = global_summary.decode("utf-8")
@@ -144,7 +146,7 @@ def translate_file_content(filename: str, data: Any, state=None) -> Any:
             if res.get("skip_db"):
                 continue
 
-            batch_records.append({
+            record = {
                 "filename": filename,
                 "property": path,
                 "value": original,
@@ -162,11 +164,30 @@ def translate_file_content(filename: str, data: Any, state=None) -> Any:
                 "translation_time": res.get("duration"),
                 "input_size": res.get("input_size"),
                 "output_size": res.get("output_size"),
-                "size_difference": res.get("size_difference")
-            })
+                "size_difference": res.get("size_difference"),
+                "is_duplicated": False,
+                "duplication_count": 1
+            }
+
+            # Check duplication
+            meta = get_translation_metadata(original, Config.SOURCE_LANGUAGE, Config.TARGET_LANGUAGE)
+            record["is_duplicated"] = meta["is_duplicated"]
+            record["duplication_count"] = meta["duplication_count"]
+
+            batch_records.append(record)
         
         if batch_records:
             db_queue.push_batch(batch_records)
             # print(f"📥 Queued batch of {len(batch_records)} translations for {filename}")
+
+        # Atomic Save: Save the file after each batch to ensure progress is persisted
+        if output_path:
+            try:
+                import os
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                with open(output_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"⚠️ Failed to incrementally save {filename}: {e}")
 
     return data
